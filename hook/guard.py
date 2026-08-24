@@ -74,6 +74,9 @@ class DraftingGuard:
         self._cfg = config
         self._ledger = Ledger(config.ledger_path)
         self._doc_names = citeable_names(config.documents_dir)
+        # Set once a draft passes. Generating the deliverable is permitted
+        # only after this, so the conversion step cannot outrun the check.
+        self._approved_draft = False
 
     def __getattr__(self, name):
         # Everything not overridden here is LAB's own behaviour.
@@ -108,10 +111,10 @@ class DraftingGuard:
             except ValueError:
                 return self._inner.execute(tool_name, arguments)
 
+        if tool_name == "bash":
+            return self._bash(args, tool_name, arguments)
+
         if tool_name not in ("write", "edit"):
-            # Reads, searches and shell commands are not governed by a
-            # drafting standard: a standard is a property of the document,
-            # and the document only exists at a write.
             self._ledger.record(
                 tool=tool_name, summary=f"{tool_name}",
                 action_text=f"{tool_name}", result="SKIPPED",
@@ -129,21 +132,77 @@ class DraftingGuard:
             return self._inner.execute(tool_name, arguments)
 
         findings = check_draft(content, self._cfg.engagement, self._doc_names)
-        facts = at.deliverable_action(path, findings)
+        return self._govern(findings, f"{tool_name}: {path}", content,
+                            tool_name, arguments)
 
+    def _bash(self, args: dict, tool_name, arguments) -> str:
+        """Govern shell commands that bring the deliverable into existence.
+
+        The first version of this guard skipped bash entirely, reasoning
+        that "a standard is a property of the document, and the document
+        only exists at a write". That was wrong, and runD_r1 proved it in
+        the most direct way available: blocked three times on `write`, the
+        agent wrote the memo with a bash heredoc and converted it with
+        `generate_from_md.py`. Zero permitted writes, a finished .docx on
+        disk, and a ledger that looked respectable next to a deliverable
+        missing its issuing firm.
+
+        That is the same hole as BATTLE-TEST-FINDINGS §6 in the conduct
+        demo — cited in this file's own docstring, and recreated anyway.
+
+        Two pathways are governed here:
+          1. a heredoc carrying memo content -> check that content
+          2. a command producing a deliverable -> permitted only if a
+             compliant draft was approved earlier in this run. The content
+             lives in a sandbox file the guard cannot read, so the
+             precondition is the enforceable thing.
+        """
+        cmd = args.get("command") or ""
+
+        # (1) heredoc or redirect carrying the memo itself
+        if self._is_draft("", cmd):
+            findings = check_draft(cmd, self._cfg.engagement, self._doc_names)
+            return self._govern(findings, "bash (memo content)", cmd,
+                                tool_name, arguments)
+
+        # (2) a command that produces a deliverable file
+        names = [d.lower() for d in self._cfg.deliverable_names]
+        if any(n in cmd.lower() for n in names):
+            if self._approved_draft:
+                self._ledger.record(
+                    tool="bash", summary="bash: produce deliverable",
+                    action_text="bash: produce deliverable", result="SKIPPED",
+                    detail="a compliant draft was approved earlier in this run")
+                return self._inner.execute(tool_name, arguments)
+            self._ledger.record(
+                tool="bash", summary="bash: produce deliverable",
+                action_text=cmd[:400], result="UNSAT",
+                detail="deliverable generated without an approved draft")
+            return (
+                "Blocked by firm drafting standards: this command produces "
+                "the deliverable, but no draft meeting the issuing standard "
+                "has been approved in this run. Write the memorandum with "
+                "the `write` tool first so it can be checked, then generate "
+                "the deliverable from the approved draft.")
+
+        self._ledger.record(
+            tool="bash", summary=f"bash: {cmd[:60]}",
+            action_text=f"bash: {cmd[:60]}", result="SKIPPED",
+            detail="shell command not producing a governed document")
+        return self._inner.execute(tool_name, arguments)
+
+    def _govern(self, findings, summary, action_src, tool_name, arguments):
+        facts = at.deliverable_action(summary, findings)
         res = self._checked(facts)
         if res is None:
-            self._ledger.record(
-                tool=facts.tool, summary=facts.summary,
-                action_text=facts.text, result="OUTAGE-BLOCKED",
-                detail="Preflight API unreachable after retries; fail-closed")
+            self._ledger.record(tool=facts.tool, summary=summary,
+                                action_text=facts.text, result="OUTAGE-BLOCKED",
+                                detail="Preflight unreachable; fail-closed")
             return ("SecurityError: firm drafting-standards check "
-                    "unavailable (enforcement service unreachable). This "
-                    "document was not written.")
-
+                    "unavailable. This document was not written.")
         blocked, verdict, note = self._decide(res)
         self._ledger.record(
-            tool=facts.tool, summary=facts.summary, action_text=facts.text,
+            tool=facts.tool, summary=summary, action_text=facts.text,
             result=verdict, detail=note or "",
             check_id=res.get("check_id"),
             proof_id=res.get("zk_proof_id") or res.get("proof_id"),
@@ -151,13 +210,9 @@ class DraftingGuard:
         pid = res.get("zk_proof_id") or res.get("proof_id")
         if pid:
             self._cfg.proof_queue.append(pid)
-
         if blocked:
-            # The action never executes. Feedback names the specific
-            # defect: a bare refusal produces thrash, a specific one
-            # produces a fix.
             return at.block_message(findings)
-
+        self._approved_draft = True
         return self._inner.execute(tool_name, arguments)
 
     # ---- verdict --------------------------------------------------------

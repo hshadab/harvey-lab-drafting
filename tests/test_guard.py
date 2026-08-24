@@ -97,13 +97,55 @@ class TestGoverning(unittest.TestCase):
         self.assertEqual(c.actions, [], "scratch note should not be checked")
         self.assertEqual(len(inner.calls), 1, "scratch note should execute")
 
-    def test_reads_and_bash_are_never_governed(self):
+    def test_reads_are_never_governed(self):
         c = FakeClient("SAT")
         g, inner = make_guard(c, self.tmp)
         g.execute("read", json.dumps({"file_path": "cim.docx"}))
-        g.execute("bash", json.dumps({"command": "ls"}))
         self.assertEqual(c.actions, [])
-        self.assertEqual(len(inner.calls), 2)
+        self.assertEqual(len(inner.calls), 1)
+
+
+class TestBashBypass(unittest.TestCase):
+    """runD_r1: blocked three times on `write`, the agent wrote the memo
+    with a bash heredoc and converted it with generate_from_md.py. Zero
+    permitted writes, a finished .docx on disk. These pin that shut."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+
+    def test_heredoc_carrying_the_memo_is_checked(self):
+        c = FakeClient("UNSAT")
+        g, inner = make_guard(c, self.tmp)
+        out = g.execute("bash", json.dumps(
+            {"command": "cat > /tmp/memo.md << 'EOF'\n" + NO_CLEARED + "\nEOF"}))
+        self.assertEqual(len(c.actions), 1, "heredoc memo was not checked")
+        self.assertEqual(inner.calls, [], "blocked heredoc must not execute")
+
+    def test_generating_the_deliverable_without_an_approved_draft_is_blocked(self):
+        c = FakeClient("SAT")
+        g, inner = make_guard(c, self.tmp)
+        out = g.execute("bash", json.dumps({"command":
+            "python skills/docx/scripts/generate_from_md.py /tmp/m.md "
+            "output/red-flag-memo.docx"}))
+        self.assertEqual(inner.calls, [], "conversion must not outrun the check")
+        self.assertIn("no draft meeting the issuing standard", out)
+
+    def test_generating_is_allowed_after_a_draft_is_approved(self):
+        c = FakeClient("SAT")
+        g, inner = make_guard(c, self.tmp)
+        g.execute("write", json.dumps(
+            {"file_path": "memo.md", "content": COMPLIANT}))      # approved
+        g.execute("bash", json.dumps({"command":
+            "python skills/docx/scripts/generate_from_md.py /tmp/m.md "
+            "output/red-flag-memo.docx"}))
+        self.assertEqual(len(inner.calls), 2, "approved draft should allow conversion")
+
+    def test_ordinary_shell_commands_still_pass(self):
+        c = FakeClient("SAT")
+        g, inner = make_guard(c, self.tmp)
+        g.execute("bash", json.dumps({"command": "ls -la"}))
+        self.assertEqual(c.actions, [])
+        self.assertEqual(len(inner.calls), 1)
 
 
 class TestEnforcement(unittest.TestCase):
