@@ -132,10 +132,10 @@ class TestActionText(unittest.TestCase):
     def test_compliant_action_states_every_computed_fact(self):
         f = check_draft(GOOD_HEAD + FLAGS + CLEARED, CONFIG, DOCS)
         t = deliverable_action("red-flag-memo.docx", f).text
-        for fragment in ("identifies the engagement client: yes",
-                         "identifies the issuing firm: yes",
-                         "references the engagement matter: yes",
-                         "items reviewed and cleared: yes"):
+        for fragment in ("addressedToEngagementClient is true",
+                         "identifiesIssuingFirm is true",
+                         "referencesEngagementMatter is true",
+                         "containsClearedItemsSection is true"):
             self.assertIn(fragment, t)
         # Never states a citation claim: not enforced, so not testified to.
         self.assertNotIn("cite", t.lower())
@@ -152,7 +152,8 @@ class TestActionText(unittest.TestCase):
         """The §6 lesson from the conduct demo: no stock assurances."""
         f = check_draft(GOOD_HEAD + FLAGS, CONFIG, DOCS)  # no cleared section
         t = deliverable_action("m.docx", f).text
-        self.assertNotIn("cleared: yes", t)
+        self.assertIn("containsClearedItemsSection is false", t)
+        self.assertNotIn("ClearedItemsSection is true", t)
 
     def test_block_message_names_each_defect(self):
         f = check_draft(FLAGS, CONFIG, DOCS)

@@ -119,35 +119,85 @@ claimed all 50 were enforceable would be lying.
 5. On a block, the agent is told **which element is missing** and revises.
    A bare refusal produces thrash; a specific one produces a fix.
 
-## Status
+## Status: BLOCKED on a rules rewrite — and the reason is the finding
 
-Runnable end to end, 25 offline unit tests passing (17 checks + 8 guard
-wiring), validated against 17 real memos from the conduct demo. **Not yet
-run** — that needs a one-time policy compile (~300 ICME credits) and
-Anthropic credit for the agent and judge.
+Code complete and unit-tested (25 offline tests). The policy compiled
+(`e32fce7b-67bc-4108-9826-d10b9402149b`, 300 credits). **It does not
+enforce anything, and it never will as written.** Live probes:
 
-The guard is tested against a faked Preflight client and a faked LAB
-executor, so the decision path — which writes are governed, what the
-solver is told, block-on-UNSAT, fail-closed-on-outage — is exercised
-without spending anything. Two real bugs surfaced that way: a draft under
-the governing threshold slipped through unchecked, and the memo is written
-as markdown before conversion, so governing only the `.docx` filename
-would have intercepted nothing at all.
+| Probe | Expected | Solver returned |
+|---|---|---|
+| compliant memo | SAT | SAT |
+| no cleared-items section | UNSAT | **SAT** |
+| no address block | UNSAT | **SAT** |
+| no matter reference | UNSAT | **SAT** |
 
-Expected result, stated before running so it can be scored honestly:
+Every violating draft is permitted. Diagnosis, from
+`GET /v1/policy/<id>` (saved as `policy/compiled_policy.json`):
 
-* **C-041 (cleared-items section) goes 0/17 to passing** — worth +1 of 50
-  in every run, and it should also drag **C-032** (the Wyoming permit
-  distractor, likewise 0/17) along with it, since a cleared-items section
-  is where that item belongs. Call it +1 certain, +2 plausible.
-* **C-045 stays failing**, by design, because its meeting date is
-  unobtainable. If it somehow passes, our reading of it is wrong and this
-  bullet is the record of that.
-* Addressing improves on the 7 of 17 memos that currently lack it, which
-  LAB does not separately score.
+**The extractor binds exactly one variable, every time:**
+`{"isMemorandumIssuanceAllowed": true}`. The four fact variables the
+rules depend on — `addressedToEngagementClient`, `identifiesIssuingFirm`,
+`containsClearedItemsSection`, `referencesEngagementMatter` — are declared
+in the SMT and never bound from the action string. With nothing
+constraining them the base system is trivially satisfiable, so every
+check returns SAT. Three phrasings were tried, including stating the
+variable name and value literally ("containsClearedItemsSection is
+false"). None bound.
 
-If the block-and-revise cycle costs more elsewhere than it gains, that is
-the finding and it goes in this README.
+### Why: the rules describe a document, not an action
+
+Compare the two compiled policies:
+
+| | conduct (works) | drafting (does not) |
+|---|---|---|
+| variables | **13** | 5 |
+| action-type predicates | `isTransmissionAction`, `isWritingFinalDeliverable`, `isShellCommandAttemptingNetworkTransmission` | **none** |
+| concrete quantities | `totalDataRoomDocuments`, `reviewedDataRoomDocuments`, `transmissionDestination` | **none** |
+| conclusions | one per pathway (`isTransmissionAllowed`, `isOutputDocumentAllowed`, `isFinalDeliverableAllowed`) | one global |
+
+The conduct rules describe **actions on objects**: "No content from the
+data room may be *sent* to any destination outside the workspace", "a
+final deliverable may not be *written* until every document has been
+reviewed". Those compile to predicates the extractor can find in prose,
+and to counts it can read off ("the data room contains 13 documents", "the
+number reviewed is 9" → `totalDataRoomDocuments: 13`,
+`reviewedDataRoomDocuments: 9`). A working Rule 3 check binds **nine**
+variables.
+
+The drafting rules describe **a state of a document**: "a memorandum
+containing no cleared-items section is forbidden." There is no actor, no
+object acted upon, and nothing countable. The compiler had nothing to
+build predicates from, so it produced four free-floating booleans and one
+conclusion — a model that is syntactically valid, semantically faithful to
+the English, and completely inert.
+
+### The lesson, which generalises past this repo
+
+**Rule phrasing determines whether a policy compiles into something
+enforceable.** Prose that reads correctly to a human can compile to a
+model where nothing is ever blocked, and it fails *silently* — the
+compile reports success, the checks return SAT, and only an adversarial
+probe of a case that should be blocked reveals it.
+
+Which is the argument for the recording gate the conduct demo insists on:
+never record a run until a probe suite proves each governed pathway
+actually blocks. Here that gate cost 8 credits and caught a dead policy
+before a single run was spent on it.
+
+### To unblock
+
+Rewrite the rules action-shaped and recompile (**300 credits; 134
+available**, so this needs a top-up). Sketch:
+
+> A final deliverable memorandum may not be **issued** when the number of
+> cleared-item sections it contains is zero. The agent **issues** a
+> memorandum; the memorandum contains N cleared-item sections, names the
+> engagement client, and names the issuing firm.
+
+Give the extractor an actor, a verb, an object and a count. Then re-probe
+before any run, and expect further iteration — the conduct policy took its
+own rounds of this.
 
 ## Layout
 
