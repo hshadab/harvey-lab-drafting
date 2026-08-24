@@ -18,17 +18,43 @@ document, checkable without knowing any right answers. Those can be
 enforced *before* the deliverable is written, which turns a hoped-for
 property into a guaranteed one.
 
-Two such criteria fail in **every single run** we have ever recorded —
-17 of 17, across both arms of the conduct demo:
-
-| LAB criterion | Passes | What it asks |
-|---|---|---|
-| **C-045** — addressed to correct parties | **0 / 17** | Memo addressed to the client, from the firm, referencing the IC meeting |
-| **C-041** — cleared-items section | **0 / 17** | A section recording what was reviewed and found *not* to be a red flag |
+| Standard enforced here | Memos failing it (of 17 recorded) |
+|---|---|
+| Addressed to the engagement client, from the issuing firm, referencing the matter | **7 / 17** |
+| Contains a section recording what was reviewed and cleared | **17 / 17** |
 
 Not because the agent can't do these. Because nobody asked, and it didn't
 infer them. A firm's drafting standards live in a style guide, not in the
 task prompt — which is exactly the gap a policy layer is for.
+
+Corroboration for the second one: LAB's C-032 asks the memo *not* to flag
+a permit whose renewal was timely filed, and that fails 17/17 too. The
+agent flags it. That item is precisely what belongs in a cleared-items
+section — the same missing habit, showing up twice in the rubric.
+
+### One criterion we deliberately do not chase
+
+LAB's **C-045** wants the memo addressed to the right parties *and*
+referencing "the January 24, 2025 investment committee meeting." That date
+appears **nowhere in the 13 data room documents** — only inside
+`task.json`'s own criteria. Verify it yourself:
+
+```bash
+cd ~/harvey-labs/tasks/corporate-ma/review-data-room-red-flag-review
+for f in documents/*.docx; do pandoc "$f" -t plain | grep -il "january 24, 2025"; done   # no hits
+grep -c "January 24, 2025" task.json                                                     # 1
+```
+
+No agent can reference a date absent from its inputs, which is why C-045
+reads 0/17 and always will. So this repo enforces the **achievable half**
+— addressed to the client, from the firm, naming the matter — and lets the
+criterion keep failing. Building a demo whose headline win is "we passed
+an unsatisfiable criterion" would be worthless.
+
+That has a useful consequence for reading the results: after enforcement,
+memos will be correctly addressed **and C-045 will still fail**. That gap
+is the cleanest available demonstration that the criterion, not the agent,
+is the broken part.
 
 ## Whose rule is this?
 
@@ -100,14 +126,25 @@ memos from the conduct demo. **Not yet run end to end** — that needs a
 one-time policy compile (~300 ICME credits) and Anthropic credit for the
 agent and judge.
 
-Expected result, stated before running so it can be scored honestly: the
-two enforced criteria go from 0/17 to passing, worth **+2 of 50**. If the
-block-and-revise cycle costs more elsewhere than it gains, that is the
-finding and it goes in this README.
+Expected result, stated before running so it can be scored honestly:
+
+* **C-041 (cleared-items section) goes 0/17 to passing** — worth +1 of 50
+  in every run, and it should also drag **C-032** (the Wyoming permit
+  distractor, likewise 0/17) along with it, since a cleared-items section
+  is where that item belongs. Call it +1 certain, +2 plausible.
+* **C-045 stays failing**, by design, because its meeting date is
+  unobtainable. If it somehow passes, our reading of it is wrong and this
+  bullet is the record of that.
+* Addressing improves on the 7 of 17 memos that currently lack it, which
+  LAB does not separately score.
+
+If the block-and-revise cycle costs more elsewhere than it gains, that is
+the finding and it goes in this README.
 
 ## Layout
 
     policy/controls.md      the drafting standards (source for makeRules)
+    policy/engagement.json  matter facts — what keeps the rules generic
     hook/drafting.py        host-side checks — the only place facts are computed
     hook/action_text.py     per-action strings; states only what was computed
     hook/preflight_client.py, hook/ledger.py   shared with harvey-lab-preflight

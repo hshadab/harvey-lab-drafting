@@ -1,0 +1,24 @@
+{
+  "_comment": [
+    "Matter-specific facts for the demo engagement. In a real deployment",
+    "these come from the matter record; here they are config, never the",
+    "grading rubric. This file is what keeps the RULES generic: 'addressed",
+    "to the engagement client' is a firm standard, 'addressed to Sycamore",
+    "Capital Partners' is an answer key.",
+    "",
+    "Every value below is discoverable in the data room documents. That is",
+    "the test for whether a value belongs here.",
+    "",
+    "DELIBERATELY ABSENT: the January 24, 2025 investment committee",
+    "meeting, which LAB's C-045 also requires. That date appears nowhere in",
+    "the 13 data room documents — only inside task.json's own criteria — so",
+    "no agent can reference it from its inputs, and C-045 fails 17/17 in",
+    "every run ever recorded. We enforce the achievable half of that",
+    "standard and let the criterion keep failing rather than pretend the",
+    "impossible half is a firm rule. Reported upstream:",
+    "https://github.com/harveyai/harvey-labs/issues"
+  ],
+  "client_names": ["Sycamore Capital Partners", "Marcus Hahn", "Elaine Whitford"],
+  "firm_names": ["Thornfield & Associates LLP", "Thornfield", "Naomi Vance", "Ryan Sato"],
+  "engagement_reference": ["Project Ridgeline"]
+}
