@@ -1,0 +1,266 @@
+"""Host-side drafting-standards checks.
+
+These compute, from a draft deliverable, the facts the policy rules reason
+over. Nothing here decides anything: the guard states these facts in the
+action string and Preflight's solver rules on them. That separation is the
+whole point — see BATTLE-TEST-FINDINGS in harvey-lab-preflight, where a
+hook that *asserted* a property it had never computed let the agent walk
+straight through Rule 2.
+
+Design rule, and the one that keeps this honest:
+
+    The RULE is generic. The ENGAGEMENT supplies the specifics.
+
+"Every memo is addressed to the engagement client" is a firm drafting
+standard. "Every memo is addressed to Sycamore Capital Partners" is an
+answer key. This module only implements the former; who the client is
+arrives as EngagementConfig, exactly as it would from a matter record in a
+real deployment. The same applies to source citations: the list of
+citeable documents is read off the data room, never hardcoded.
+
+Anything that cannot be checked without knowing the right answer is out of
+scope by construction. We check that each red flag cites *a* source, never
+that it cites the *correct* source; that a cleared-items section exists,
+never that it clears the right items.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+from pathlib import Path
+
+# A heading that opens a red-flag entry. LAB deliverables in practice use
+# numbered issues ("1. Environmental permit"), explicit ISSUE_ tags, or
+# markdown headings; accept all three rather than dictating a house format.
+# Memos label red flags one of two ways. A *tagged* convention ("RF-01",
+# "ISSUE_003", "Red Flag 2") is unambiguous. A *numbered* convention
+# ("3. Title") is not — ordinary numbered lists inside a flag's body look
+# identical to flag headings.
+#
+# So: detect which convention the document uses, then apply only that one.
+# Applying both at once split runB_r5 into 42 "flags" when it contains 22,
+# because each flag's numbered Required Action items were read as new
+# flags — and those fragments carry no Source: line, so 20 fully-cited
+# flags were scored uncited. Mixing conventions manufactures the very
+# defect the rule is meant to detect.
+_TAGGED_HEADING = re.compile(
+    r"^[ \t]*(?:#{1,6}[ \t]*)?"
+    r"(?:rf|issue|red\s*flag|finding|item)[\s_#|.-]*\d+",
+    re.I | re.M,
+)
+_NUMBERED_HEADING = re.compile(
+    r"^[ \t]*(?:#{1,6}[ \t]*)?\d{1,2}[.)][ \t]+\S[^\n]{0,110}$",
+    re.I | re.M,
+)
+# Two or more tagged headings means the document has committed to that
+# convention; one could be an accident of prose.
+_TAGGED_MIN = 2
+
+
+def _heading_re(text: str):
+    """The heading convention this document actually uses."""
+    if len(_TAGGED_HEADING.findall(text)) >= _TAGGED_MIN:
+        return _TAGGED_HEADING
+    return _NUMBERED_HEADING
+
+
+# How a memo attributes a red flag to its evidence. Real LAB deliverables
+# use an explicit "Source:" line per flag (22 flags, 22 Source: lines in
+# runB_r5); accept the common variants rather than dictating one.
+#
+# Matching document names alone was tried first and was badly wrong: memos
+# cite by human title and abbreviation ("QofE Data Package", "CIM"), not by
+# filename, so a filename-derived dictionary scored 21 of 22 cited flags as
+# uncited. Requiring a stated attribution is both more robust and a more
+# honest standard — it checks that the drafter named a source, never that
+# the source is the right one, which no drafting rule could know.
+_ATTRIBUTION = re.compile(
+    r"^[ \t]*(?:sources?|see|per|ref(?:erence)?|pursuant\s+to|citing)\b[ \t:]"
+    r"|\b(?:source|sources)\s*:",
+    re.I | re.M,
+)
+
+
+# Section headings that constitute a cleared / non-issue section. Broad on
+# purpose: the standard is "you documented what you cleared", not "you used
+# our preferred wording".
+_CLEARED_HEADING = re.compile(
+    r"^[ \t]*(?:#{1,6}[ \t]*)?(?:[IVX]+\.[ \t]*|\d+[.)][ \t]*)?[^\n]{0,60}?\b("
+    r"cleared|not\s+(?:a\s+)?red\s+flags?|non[-\s]?issues?|no\s+action\s+required"
+    r"|items?\s+reviewed\s+(?:and|&)\s+cleared|adequately\s+addressed"
+    r"|considered\s+and\s+(?:cleared|dismissed)|false\s+positives?"
+    r")\b[^\n]{0,40}$",
+    re.I | re.M,
+)
+
+# A cleared section that is a bare heading with nothing under it does not
+# satisfy the standard; require some prose beneath it.
+_MIN_CLEARED_CHARS = 120
+
+
+@dataclass(frozen=True)
+class EngagementConfig:
+    """Matter-specific facts. In a real deployment these come from the
+    matter record; here they come from a config file, never from the
+    grading rubric."""
+    client_names: tuple[str, ...]
+    firm_names: tuple[str, ...]
+    engagement_reference: tuple[str, ...] = ()
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "EngagementConfig":
+        return cls(
+            client_names=tuple(d.get("client_names", ())),
+            firm_names=tuple(d.get("firm_names", ())),
+            engagement_reference=tuple(d.get("engagement_reference", ())),
+        )
+
+
+@dataclass
+class DraftingFindings:
+    addressed_to_client: bool
+    addressed_from_firm: bool
+    references_engagement: bool
+    has_cleared_section: bool
+    red_flag_count: int
+    uncited_red_flags: list[str] = field(default_factory=list)
+
+    @property
+    def uncited_count(self) -> int:
+        return len(self.uncited_red_flags)
+
+    @property
+    def addressed_ok(self) -> bool:
+        return (self.addressed_to_client and self.addressed_from_firm
+                and self.references_engagement)
+
+    def compliant(self) -> bool:
+        """Enforced standards only.
+
+        uncited_red_flags is measured but deliberately NOT enforced: the
+        underlying criterion (LAB C-039) needs a reliable split of free
+        prose into discrete red flags, and ours disagreed with LAB's judge
+        on 10 of 17 real memos. Enforcing a check that does not reproduce
+        the standard it claims to enforce would be the exact failure this
+        project exists to avoid. Kept as an advisory signal only.
+        """
+        return self.addressed_ok and self.has_cleared_section
+
+    def missing(self) -> list[str]:
+        """Human-readable list of what fails, for the block message the
+        agent receives. Being specific here is what lets it fix the draft
+        instead of guessing."""
+        out = []
+        if not self.addressed_to_client:
+            out.append("no addressee identifying the engagement client")
+        if not self.addressed_from_firm:
+            out.append("no sender identifying the engagement firm")
+        if not self.references_engagement:
+            out.append("no reference to the engagement or its meeting date")
+        if not self.has_cleared_section:
+            out.append("no section documenting items reviewed and cleared")
+        return out
+
+
+def _norm(s: str) -> str:
+    return re.sub(r"\s+", " ", s).strip().lower()
+
+
+def citeable_names(documents_dir: str | Path) -> set[str]:
+    """Every token by which a data-room document could legitimately be
+    cited: its filename, its stem, and the stem's word forms. Read off the
+    data room, so this generalises to any matter."""
+    names: set[str] = set()
+    d = Path(documents_dir)
+    if not d.exists():
+        return names
+    for p in sorted(d.iterdir()):
+        if not p.is_file():
+            continue
+        names.add(p.name.lower())
+        stem = p.stem.lower()
+        names.add(stem)
+        names.add(stem.replace("-", " ").replace("_", " "))
+    return {n for n in names if len(n) >= 4}
+
+
+def split_red_flags(text: str) -> list[tuple[str, str]]:
+    """Split a draft into (heading, body) per red-flag entry.
+
+    Everything before the first heading is preamble and is not a red flag.
+    A section whose heading matches the cleared-items pattern is excluded:
+    cleared items are by definition not red flags, and requiring them to
+    cite sources would punish the very section Rule 2 asks for.
+    """
+    # A block ends at the next heading of EITHER kind. Ending only at the
+    # next red-flag heading let the final flag absorb the cleared-items
+    # section that followed it; because that section cites documents, an
+    # uncited flag was scored as cited. Cleared headings are boundaries
+    # even though they are not themselves red flags.
+    flag_re = _heading_re(text)
+    bounds = sorted(
+        [(m.start(), "flag") for m in flag_re.finditer(text)]
+        + [(m.start(), "cleared") for m in _CLEARED_HEADING.finditer(text)]
+    )
+    out: list[tuple[str, str]] = []
+    for i, (start, kind) in enumerate(bounds):
+        end = bounds[i + 1][0] if i + 1 < len(bounds) else len(text)
+        block = text[start:end]
+        heading = block.splitlines()[0].strip() if block.strip() else ""
+        # Skip cleared sections, and any flag heading that is itself a
+        # cleared heading ("3. Items reviewed and cleared").
+        if kind == "cleared" or _CLEARED_HEADING.match(heading):
+            continue
+        out.append((heading, block))
+    return out
+
+
+def has_cleared_section(text: str) -> bool:
+    for m in _CLEARED_HEADING.finditer(text):
+        body = text[m.end():]
+        # Stop at the next heading so a trailing heading with no content
+        # does not borrow the rest of the document as its body.
+        nxt = _heading_re(text).search(body)
+        if nxt:
+            body = body[:nxt.start()]
+        if len(body.strip()) >= _MIN_CLEARED_CHARS:
+            return True
+    return False
+
+
+def check_draft(text: str, config: EngagementConfig,
+                doc_names: set[str]) -> DraftingFindings:
+    """Compute every drafting fact the policy needs. Pure function: no
+    network, no policy decision, no side effects."""
+    low = _norm(text)
+    # Only the top of the document counts as the address block; a client
+    # name appearing in body prose is not an addressee.
+    head = _norm("\n".join(text.splitlines()[:40]))
+
+    addressed_to_client = any(_norm(n) in head for n in config.client_names)
+    addressed_from_firm = any(_norm(n) in head for n in config.firm_names)
+    # ALL configured references must appear, not any. The judge's C-045
+    # requires both the matter and the investment-committee meeting date;
+    # an any() test passed on the matter name alone and disagreed with the
+    # judge on 5 of 17 runs.
+    references_engagement = all(
+        _norm(r) in low for r in config.engagement_reference)
+
+    uncited: list[str] = []
+    flags = split_red_flags(text)
+    for heading, block in flags:
+        blow = _norm(block)
+        cited = bool(_ATTRIBUTION.search(block)) or any(
+            n in blow for n in doc_names)
+        if not cited:
+            uncited.append(heading[:70])
+
+    return DraftingFindings(
+        addressed_to_client=addressed_to_client,
+        addressed_from_firm=addressed_from_firm,
+        references_engagement=references_engagement,
+        has_cleared_section=has_cleared_section(text),
+        red_flag_count=len(flags),
+        uncited_red_flags=uncited,
+    )
