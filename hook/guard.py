@@ -194,4 +194,10 @@ class DraftingGuard:
         return None
 
     def finish(self, ledger_json_path: str | Path):
-        self._ledger.finish(ledger_json_path)
+        # Ledger exposes consolidate() + close(), not finish(). Getting
+        # this wrong only failed at the END of a run, inside the finally
+        # block, after ~20 minutes of agent work and ~12 credits — the
+        # entire run was lost to a one-line typo. Covered by test_guard
+        # now: any offline test that calls finish() would have caught it.
+        self._ledger.consolidate(ledger_json_path)
+        self._ledger.close()

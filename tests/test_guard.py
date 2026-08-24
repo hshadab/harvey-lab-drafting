@@ -145,6 +145,20 @@ class TestEnforcement(unittest.TestCase):
         self.assertIn("cleared-items sections the memorandum contains is 0",
                       c.actions[0])
 
+    def test_finish_consolidates_the_ledger(self):
+        """The whole run-teardown path, which only executes at the very end
+        of a real run. A wrong method name here (finish vs consolidate)
+        destroyed a complete 20-minute run before this test existed."""
+        c = FakeClient("SAT")
+        g, _ = make_guard(c, self.tmp)
+        g.execute("write", json.dumps(
+            {"file_path": "memo_content.md", "content": COMPLIANT}))
+        out = Path(self.tmp) / "ledger.json"
+        g.finish(out)
+        self.assertTrue(out.exists(), "consolidated ledger not written")
+        data = json.loads(out.read_text())
+        self.assertEqual(data["totals"]["SAT"], 1)
+
     def test_ledger_records_every_decision(self):
         c = FakeClient("SAT")
         g, _ = make_guard(c, self.tmp)
