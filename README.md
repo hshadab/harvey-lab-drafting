@@ -121,10 +121,18 @@ claimed all 50 were enforceable would be lying.
 
 ## Status
 
-Code complete, 17 offline unit tests passing, validated against 17 real
-memos from the conduct demo. **Not yet run end to end** — that needs a
-one-time policy compile (~300 ICME credits) and Anthropic credit for the
-agent and judge.
+Runnable end to end, 25 offline unit tests passing (17 checks + 8 guard
+wiring), validated against 17 real memos from the conduct demo. **Not yet
+run** — that needs a one-time policy compile (~300 ICME credits) and
+Anthropic credit for the agent and judge.
+
+The guard is tested against a faked Preflight client and a faked LAB
+executor, so the decision path — which writes are governed, what the
+solver is told, block-on-UNSAT, fail-closed-on-outage — is exercised
+without spending anything. Two real bugs surfaced that way: a draft under
+the governing threshold slipped through unchecked, and the memo is written
+as markdown before conversion, so governing only the `.docx` filename
+would have intercepted nothing at all.
 
 Expected result, stated before running so it can be scored honestly:
 
@@ -145,13 +153,16 @@ the finding and it goes in this README.
 
     policy/controls.md      the drafting standards (source for makeRules)
     policy/engagement.json  matter facts — what keeps the rules generic
+    hook/guard.py           DraftingGuard — wraps LAB's ToolExecutor
+    hook/runner.py          run entry point (no proof sweep, by design)
     hook/drafting.py        host-side checks — the only place facts are computed
     hook/action_text.py     per-action strings; states only what was computed
     hook/preflight_client.py, hook/ledger.py   shared with harvey-lab-preflight
-    tests/test_drafting.py  offline unit tests, no network or API key
+    tests/test_drafting.py  check logic — offline, no network or API key
+    tests/test_guard.py     guard wiring — faked client + executor
 
 ## Run the tests
 
 ```bash
-python3 -m unittest tests.test_drafting -v
+python3 -m unittest discover -s tests -v
 ```
