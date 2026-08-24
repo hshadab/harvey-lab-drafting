@@ -125,6 +125,15 @@ class DraftingFindings:
     has_cleared_section: bool
     red_flag_count: int
     uncited_red_flags: list[str] = field(default_factory=list)
+    # Counts, not adjectives. The compiled policy reasons over quantities
+    # ("...when the number of cleared-items sections is zero"), and the
+    # extractor grounds numbers far more reliably than predicates — the
+    # working conduct policy binds totalDataRoomDocuments and
+    # reviewedDataRoomDocuments, never the boolean derived from them.
+    cleared_section_count: int = 0
+    client_name_count: int = 0
+    firm_name_count: int = 0
+    matter_reference_count: int = 0
 
     @property
     def uncited_count(self) -> int:
@@ -216,17 +225,22 @@ def split_red_flags(text: str) -> list[tuple[str, str]]:
     return out
 
 
-def has_cleared_section(text: str) -> bool:
+def _cleared_section_count(text: str) -> int:
+    """How many cleared-items sections the document contains (with
+    substance, not a bare heading)."""
+    n = 0
     for m in _CLEARED_HEADING.finditer(text):
         body = text[m.end():]
-        # Stop at the next heading so a trailing heading with no content
-        # does not borrow the rest of the document as its body.
         nxt = _heading_re(text).search(body)
         if nxt:
             body = body[:nxt.start()]
         if len(body.strip()) >= _MIN_CLEARED_CHARS:
-            return True
-    return False
+            n += 1
+    return n
+
+
+def has_cleared_section(text: str) -> bool:
+    return _cleared_section_count(text) > 0
 
 
 def check_draft(text: str, config: EngagementConfig,
@@ -256,11 +270,19 @@ def check_draft(text: str, config: EngagementConfig,
         if not cited:
             uncited.append(heading[:70])
 
+    cleared_n = _cleared_section_count(text)
     return DraftingFindings(
         addressed_to_client=addressed_to_client,
         addressed_from_firm=addressed_from_firm,
         references_engagement=references_engagement,
-        has_cleared_section=has_cleared_section(text),
+        has_cleared_section=cleared_n > 0,
         red_flag_count=len(flags),
         uncited_red_flags=uncited,
+        cleared_section_count=cleared_n,
+        client_name_count=sum(1 for n in config.client_names
+                              if _norm(n) in head),
+        firm_name_count=sum(1 for n in config.firm_names
+                            if _norm(n) in head),
+        matter_reference_count=sum(1 for r in config.engagement_reference
+                                   if _norm(r) in low),
     )

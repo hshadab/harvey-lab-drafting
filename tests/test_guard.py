@@ -142,7 +142,7 @@ class TestEnforcement(unittest.TestCase):
         g, _ = make_guard(c, self.tmp)
         g.execute("write", json.dumps(
             {"file_path": "memo_content.md", "content": NO_CLEARED}))
-        self.assertIn("containsClearedItemsSection is false",
+        self.assertIn("cleared-items sections the memorandum contains is 0",
                       c.actions[0])
 
     def test_ledger_records_every_decision(self):
