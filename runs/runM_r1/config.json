@@ -1,0 +1,17 @@
+{
+  "model": "anthropic/claude-sonnet-4-6",
+  "task": "corporate-ma/review-data-room-red-flag-review",
+  "run_id": "runM_r1",
+  "policy_id": "084c1ca7-43cf-4a34-b7dc-d179c1afd0b6",
+  "engagement": "/home/hshadab/harvey-lab-drafting/policy/engagement.json",
+  "max_turns": 200,
+  "temperature": 0.0,
+  "skills": [
+    "docx",
+    "pptx",
+    "xlsx"
+  ],
+  "briefing": false,
+  "explain_blocks": true,
+  "started_at": "2026-08-25T16:13:57.394444+00:00"
+}

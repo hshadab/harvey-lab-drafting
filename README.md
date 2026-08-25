@@ -11,36 +11,40 @@ Current state, results, and known limits: **[STATUS.md](STATUS.md)**.
 Harvey's own rubric, verbatim from
 `harvey-labs/tasks/corporate-ma/review-data-room-red-flag-review/task.json`:
 
-> **C-036 — "Executive summary includes top 5 critical findings"**
-> *PASS if the memo contains an executive summary section that
-> specifically highlights at least 5 of the most critical findings from
-> the review. FAIL if there is no executive summary or it lists fewer
-> than 5 key findings.*
+> **C-032 — "DISTRACTOR_001: Does not flag Wyoming permit as a red flag"**
+> *PASS if the memo either (a) does not flag the Wyoming DEQ permit
+> (WY-HW-2019-033) expiration as a red flag, or (b) affirmatively
+> explains that the timely filed renewal application allows continued
+> operations. **FAIL if the memo flags the Wyoming permit expiration as a
+> material red flag or recommends remedial action beyond routine
+> monitoring.***
 
-**It passes 11 of 18 recorded runs — 61%.** The seven failures are
-scattered across both arms of an unrelated experiment, with no pattern.
-The model mostly gets this right. Sometimes it doesn't.
+**Agents fail it in 23 of 28 recorded memos — 82%.** The renewal was
+filed on time; the memo raises it anyway, rates it MEDIUM, and recommends
+a closing condition. That is an associate crying wolf about a matter the
+partner already dispositioned.
 
 That is the entire pitch.
 
-## Why this is the interesting failure mode
+## Why a prohibition is the interesting shape
 
-A requirement the model *never* satisfies is a specification gap: nobody
-asked, so it didn't. Write it into the prompt and it largely goes away.
+Most of LAB's fifty criteria are requirements — *include* this, *cite*
+that. A requirement is discharged by one deliberate act the agent can
+watch itself perform, so a firm closes most of that gap with a prompt.
+The rules worth gating are the ones prompting cannot bound:
 
-C-036 is not that. It is a requirement the model **already mostly meets
-and inconsistently misses** — and that is the shape instructions cannot
-fix:
-
-* **A prompt raises the rate; it never reaches 100%.** Models drift in
-  long contexts, reprioritise under competing goals, and improvise when
-  the task gets messier than the example you tuned on.
-* **The better your prompting, the more invisible the residue.** At a 40%
-  failure rate you notice in a day. At 1% you never notice — and if an
-  agent takes 10,000 actions a month, that is 100 deliverables that went
-  out wrong.
-* **The failures look exactly like the successes.** A memo scoring 39/50
-  with a four-item executive summary reads fine. Nobody audits a rubric
+* **A prohibition has no single moment of compliance.** It must hold
+  across every red flag the memo raises. One slip in two hundred turns is
+  a failure.
+* **It competes with the task's own instruction.** The agent was told to
+  find red flags. The Wyoming permit looks like one. The tension is
+  structural, not a lapse of attention.
+* **A prompt raises the rate; it never reaches 100%.** At a 40% failure
+  rate you notice in a day. At 1% you never notice — and if an agent
+  takes 10,000 actions a month, that is 100 deliverables that went out
+  wrong.
+* **The failures look exactly like the successes.** A memo that flags one
+  non-issue among fourteen real ones reads fine. Nobody audits a rubric
   line by line.
 
 A prompt is a request. A check is a gate. And a gate leaves a receipt.
@@ -50,97 +54,38 @@ A prompt is a request. A check is a gate. And a gate leaves a receipt.
 One rule, in `policy/controls.md`:
 
 > The agent may not write a final deliverable memorandum when the number
-> of findings listed in the memorandum's executive summary is fewer than
-> five.
+> of already-cleared items that the memorandum raises as red flags is
+> greater than zero.
 
-The hook counts the findings listed in the executive summary, states that
-number as a fact, and Preflight's solver rules on it. Fewer than five and
-the memorandum is not kept; the agent is told what is missing and revises.
+The hook counts them, states that number as a fact, and Preflight's
+solver rules on it. Greater than zero and the memorandum is not kept; the
+agent is told which cleared matter it raised.
+
+**The rule is generic; the list is matter configuration.** `Do not
+re-raise an item the engagement has cleared` is a firm standard. `The
+Wyoming permit is fine` would be an answer key. The cleared list lives in
+`policy/engagement.json` alongside the client's name, and every value
+there must be discoverable in the data room — the renewal date is stated
+in the environmental permit schedule.
 
 **Scoped to one deliverable.** The rule governs `red-flag-memo.docx` and
-nothing else. LAB's own C-036 is scoped the same way — its `deliverables`
-field lists that file alone. An earlier version applied the rule to every
-deliverable in the task, including `red-flag-tracker.xlsx`; a spreadsheet
-has no executive summary, so it could never satisfy the rule, and the
-guard reverted a legitimate deliverable four times in one run. A rule
-about memoranda has nothing to say about a spreadsheet.
+nothing else, as LAB's own criterion is. An earlier version applied a
+memo rule to `red-flag-tracker.xlsx` and reverted a legitimate
+deliverable four times in one run.
+
+**Measured against 28 graded memos:** 23 true blocks, **zero** false
+blocks, 2 misses. It never refuses a memo LAB's judge accepted.
+
+**One cleared item, not four.** LAB has four distractor criteria
+(C-032..C-035). Only this one is checkable without false positives:
+matching the others fired on legitimate passing mentions their own
+criteria expressly permit — 15 on "appraisal", 12 on the
+termination-for-convenience clause. Matching the red flag's *heading*
+rather than its body is what produced zero false positives.
 
 Everything else this repo can measure — addressing, issuing firm, matter
 reference, cleared-items section, uncited red flags — is computed and
-reported as advisory, and **gates nothing**. Earlier versions enforced
-five rules and they worked. The demo makes a single claim now because a
-single claim is easier to check.
-
-## We do not replicate the judge — we imply it
-
-C-036's test is semantic, and the judge's calls on it are not consistent:
-it **passed** a summary naming four vague themes (`runA_r9`) and **failed**
-one naming five concrete items (`runA_r8`). Trying to reproduce a fuzzy
-grader is how an earlier attempt at C-039 went wrong.
-
-So the rule is deliberately **stricter and mechanical**: the executive
-summary must **enumerate and describe** at least five findings.
-
-Measured across all 28 scored memos:
-
-| | judge passes C-036 | judge fails C-036 |
-|---|---|---|
-| **guard passes** (5+ described) | 12 | **0** |
-| **guard blocks** (fewer) | 6 | 10 |
-
-The top-right cell is the one that matters. A memo the guard passes and
-the judge fails means the mechanical rule does not imply the criterion,
-and the whole design rests on it doing so. It is zero.
-
-The bottom-left cell — six memos the judge accepted and this rule would
-block — is **by design, not error**. The judge accepts a prose summary;
-a house style need not. What a house style may not do is pass work the
-rubric fails.
-
-An earlier version of this section claimed 4-of-4 from a sample of four
-memos with 5+ counted. That sample was too small to see the failure
-below.
-
-A house style may be more specific than a rubric. It may not be
-unverifiable.
-
-### The rule counted categories as findings, and the judge caught it
-
-`runI_r1`'s summary bulleted seven risk categories — "Revenue & Customer
-Concentration (3 flags)" — and numbered three actual findings. The guard
-counted seven and passed it. LAB's judge failed C-036: *"the executive
-summary only calls out 3 as 'CRITICAL SEVERITY FLAGS'."*
-
-A category names a group; it is not a finding. Keying on the marker was
-the wrong fix — `runI_r4` lists five genuine findings as dash bullets and
-passes C-036, so counting only numbered items blocks real work. What
-separates them is whether the item is *described*: categories run 26–43
-characters, findings 71–79. An item now counts with at least 50
-characters of description, measured across continuation lines so the
-count does not depend on the parser's wrapping.
-
-This is the failure mode the design is supposed to prevent, found in the
-rule itself rather than in the plumbing: not a crash, not an escape, but
-a gate passing something it should have stopped.
-
-Three counting bugs surfaced while establishing that, each of which would
-have made the claim false:
-
-1. **Summing separate lists.** `runA`'s summary says *"the three most
-   critical issues are"* and lists three; adding a second short list
-   elsewhere reached five, and LAB failed that memo. Only a **contiguous**
-   list counts.
-2. **Lists bleeding across sections.** A blank line let the summary's list
-   run into the next section's `1.`, counting four where there were three.
-   A numbered list must be **consecutively numbered** to continue.
-3. **The count depended on someone else's pandoc flags.** An indented
-   continuation line read as prose ending the list. LAB parses `.docx`
-   with `pandoc --wrap=none`, which puts each item on one line, so this
-   never fired — the count was right because of a flag in LAB's code, not
-   because the counter was. Under ordinary wrapping the same conforming
-   memo counted three instead of five, which would have blocked work that
-   met the standard. The count now describes the document, not the
-   parser.
+reported as advisory, and **gates nothing**.
 
 ## The guarantee: verify the artifact, not the command
 
@@ -175,28 +120,6 @@ It also removes a bug: the guard now reads the deliverable exactly as
 LAB's grader does, so the checker cannot disagree with the judge about
 the same document the way an earlier content-sniffing version did.
 
-### Why "revert" is the right semantics here, and where it would not be
-
-The standard is about what is **issued**. An associate hands a partner a
-memo missing its executive summary list; the partner hands it back. The
-draft existed — on a desk, in a drafts folder — and no control failed,
-because the control is "this does not go out."
-
-Reverting inside the tool call is that. The deliverable never survives to
-be delivered, the agent cannot build on it, and the final artifact is
-always verified because the last tool call is wrapped like every other.
-
-This would be the **wrong** semantics for an exfiltration rule. If the
-violation is that data left, a transmitted byte cannot be recalled and
-prevention must come first — which is why the conduct demo
-([harvey-lab-preflight](https://github.com/hshadab/harvey)) blocks before
-the action rather than verifying after it. Different rule types need
-different enforcement points, and that is a principled distinction rather
-than a compromise.
-
-The pre-checks below still run. They give the agent feedback while it is
-drafting, which is far cheaper to act on than a rejection after
-conversion — but they are the ergonomics, not the guarantee.
 
 ### A revert that fails is louder than a block
 
@@ -328,8 +251,10 @@ reports conforming memos as failures:
 
 ```bash
 pandoc runs/<id>/output/red-flag-memo.docx -t markdown --wrap=none -o /tmp/m.md
-PYTHONPATH=. python3 -c "from hook.drafting import exec_summary_findings; \
-print(exec_summary_findings(open('/tmp/m.md').read()))"
+PYTHONPATH=. python3 -c "
+import json; from hook.drafting import EngagementConfig, flagged_cleared_items
+c = EngagementConfig.from_dict(json.load(open('policy/engagement.json')))
+print(flagged_cleared_items(open('/tmp/m.md').read(), c.cleared_items))"
 ```
 
 ## Layout

@@ -476,6 +476,7 @@ class TestRevertIsVerified(unittest.TestCase):
         self.assertEqual(inner.sandbox.files[self.memo], b"PRIOR-GOOD")
 
 
+# Raises real issues only; no cleared matter appears as a red flag.
 GOOD_SUMMARY = """MEMORANDUM
 
 Executive Summary
@@ -489,13 +490,14 @@ Executive Summary
 Detailed Findings
 """
 
+# Raises a cleared matter as a red flag in its own right.
 BAD_SUMMARY = """MEMORANDUM
 
-Executive Summary
+1. DOE contract ceiling exhaustion
+The DOE contract is nearing its ceiling.
 
-We identified fifteen (15) material red flags across six risk categories.
-
-Detailed Findings
+2. Wyoming DEQ permit WY-HW-2019-033 expiry
+The permit expires 30 November 2024; recommend a closing condition.
 """
 
 
@@ -518,7 +520,7 @@ class TestFinalState(unittest.TestCase):
     def test_conforming_deliverable_is_DELIVERED(self):
         v = self._verdict(GOOD_SUMMARY)
         self.assertEqual(v["state"], "DELIVERED")
-        self.assertEqual(v["exec_summary_findings"], 5)
+        self.assertEqual(v["cleared_items_flagged"], [])
 
     def test_absent_deliverable_is_REFUSED_out_loud(self):
         v = self._verdict(None)
@@ -530,7 +532,7 @@ class TestFinalState(unittest.TestCase):
         self.assertEqual(v["state"], "ESCAPED",
                          "a blocked file left on disk must be reported as "
                          "a failed guarantee, never as a clean refusal")
-        self.assertEqual(v["exec_summary_findings"], 0)
+        self.assertIn("Wyoming", v["detail"])
         self.assertIn("on disk anyway", v["detail"])
 
     def test_unreadable_deliverable_is_never_silently_clean(self):
@@ -548,10 +550,9 @@ class TestStandardBriefing(unittest.TestCase):
     """Stating the standard changes what the agent KNOWS, never what is
     ENFORCED."""
 
-    def test_briefing_quotes_the_enforced_threshold(self):
-        from hook.drafting import _MIN_EXEC_SUMMARY_FINDINGS
-        text = standard_briefing("red-flag-memo.docx")
-        self.assertIn(str(_MIN_EXEC_SUMMARY_FINDINGS), text)
+    def test_briefing_names_the_cleared_items(self):
+        text = standard_briefing("red-flag-memo.docx", CONFIG.cleared_items)
+        self.assertIn("Wyoming", text)
         self.assertIn("red-flag-memo.docx", text)
 
     def test_briefing_does_not_relax_enforcement(self):
@@ -560,7 +561,7 @@ class TestStandardBriefing(unittest.TestCase):
         g, inner = make_guard(c, tempfile.mkdtemp(),
                               writes={"bash": {
                                   "/workspace/output/red-flag-memo.docx":
-                                  BAD_SUMMARY.encode()}})
+                                  SHORT.encode()}})
         out = bash(g, "cp /tmp/x.docx $OUTPUT_DIR/red-flag-memo.docx")
         self.assertIn("was not kept", out)
 
@@ -749,7 +750,7 @@ class TestVerdictIsAlwaysRecorded(unittest.TestCase):
                 d = Path(tempfile.mkdtemp())
                 runner.write_verdict(d, {"state": state, "detail": "x",
                                          "deliverable": "red-flag-memo.docx",
-                                         "exec_summary_findings": 0})
+                                         "cleared_items_flagged": []})
                 written = json.loads(
                     (d / "final_state.json").read_text())
                 self.assertEqual(written["state"], state)

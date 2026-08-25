@@ -47,82 +47,18 @@ criteria expressly permit — 15 on "appraisal", 12 on the
 termination-for-convenience clause. Matching the red flag's *heading*
 rather than its body is what produced zero false positives.
 
-### Why this replaced the executive-summary rule
 
-C-036 is kept as an advisory signal. It was a requirement, and it needed
-a proxy: "at least 5 of the most critical findings" is a judgment, so
-the enforced version was a deliberately stricter mechanical stand-in.
-C-032 needs no proxy of that kind, fails far more often, and is the
-shape where a gate beats a prompt.
+## Results
 
-## Results## Results
+No run has yet been recorded against this rule. `runM_r1` is the first.
 
-Every run under the current architecture:
+Runs `runG` through `runK` enforced the previous rule (C-036, executive
+summary) and are kept in `runs/` as history; their ledgers describe a
+standard this repo no longer enforces. Across all nine, zero reached
+`ESCAPED`.
 
-| Run | Model | Rule stated up front? | Blocked | Final state | Findings | LAB judge C-036 |
-|---|---|---|---|---|---|---|
-| `runG_r1` | sonnet-4-6 | no | 5 | `DELIVERED` | 5 | pass |
-| `runH_r1` | sonnet-4-6 | yes | 0 | `DELIVERED` | 15 | pass |
-| `runI_r1` | haiku-4-5 | no | 0 | `DELIVERED` | 7 (categories) | **fail** |
-| `runI_r2` | haiku-4-5 | no | 3 | `REFUSED` | — | not scored |
-| `runI_r3` | haiku-4-5 | no | 2 | `REFUSED` | — | not scored |
-| `runI_r4` | haiku-4-5 | no | 3 | `DELIVERED` | 5 (bulleted) | pass |
-| `runJ_r1` | haiku-4-5 | no | 0 | `DELIVERED` | 5 | pass |
-| `runJ_r2` | sonnet-4-6 | no | 3 | `DELIVERED` | 12 | pass |
-| `runK_r2` | haiku-4-5 | no | 3 | `REFUSED` | — | — |
-
-**13 blocks, 4 conforming deliveries, 2 refusals, 0 escapes.**
-
-`ESCAPED` — a non-conforming deliverable surviving on disk — did not
-occur. Every `DELIVERED` memo was re-checked by hand with the parser
-below and conforms. Every `REFUSED` run has no `red-flag-memo.docx` on
-disk at all.
-
-The two refusals are the correct outcome, not a failure: the weaker model
-could not meet the standard, so nothing was issued and the run says so.
-Both still produced the tracker, which the rule does not govern.
-
-Overall LAB scores where measured: `runG_r1` 38/50, `runH_r1` 35/50.
-
-
-## Live runs on the corrected rule (`runJ`)
-
-`runJ_r1` (haiku) delivered with no blocks; `runJ_r2` (sonnet) is the
-block-and-repair cycle end to end — three blocks, the agent revised,
-three passes, then `DELIVERED` with 12 findings. LAB's judge passed
-C-036 on both.
-
-Two things this exposed, both narrowing what the rule can be claimed to
-do:
-
-**Described categories were not excluded — now fixed.** `runJ_r1`'s
-summary bullets four severity bands — "CRITICAL (4 flags): Issues
-requiring immediate resolution…" — each 55–96 characters, all above the
-length threshold. They are categories, the same shape that broke the
-rule in `runI_r1`, but they carry a sentence of description so length
-did not exclude them. The count came out right only because the bands
-form a run of **four** and `Key findings:` at the margin breaks the run;
-five bands would have passed the gate on categories again. Verified
-directly: five described bands counted 5 before the fix.
-
-An item that announces **how many** findings it covers is now read as a
-category. A finding describes one thing; a category says how many things
-it contains. Both idioms are recognised — "CRITICAL (4 flags):" and
-"CRITICAL ISSUES (3):". A bare tally noun stands alone only for
-flags/findings; the broader nouns (issues, items, concerns) count only
-in the parenthesised form, so a real finding saying "5 issues remain"
-is not excluded.
-
-On the 28 scored memos this changes **no count** — there the bands were
-already too short or formed a shorter run than the real findings — so it
-closes the hole without moving any measured result.
-
-**A character cap made the count depend on the parser.** The executive
-summary was truncated at 4000 raw characters, and `runJ_r2`'s summary is
-4712 characters under `--wrap=none` and 4864 under `--columns=72`, so
-the cut landed in a different place: 12 findings under one parser, 11
-under the other. The cap now applies after coalescing, so it measures
-the document rather than the wrapping.
+What is measured for the current rule is offline, against the 28 graded
+memos: 23 true blocks, zero false blocks, 2 misses.
 
 ## What the configurations are for
 
@@ -146,7 +82,7 @@ combination.
   runs read unexplained blocks as broken tooling and went off to strace
   pandoc; the deliverable stayed governed the whole time.
 * **Explained block** (default) — the refusal names the defect ("the
-  executive summary lists 3 findings; at least 5 must be listed"), so
+  names the cleared matter it raised), so
   the agent revises the memo and converges. This is the demo's product
   arm.
 
@@ -171,6 +107,11 @@ suite.
 
 ## Known limits
 
+* **One cleared item, not four.** LAB has four distractor criteria
+  (C-032..C-035); only this one is checkable without false positives.
+  Enforcing the others would block memos their own criteria permit.
+* The check matches a red flag's heading. A memo that raises a cleared
+  matter without naming it in the heading would not be caught.
 * Nine runs is still a small sample, and only four are scored by LAB's
   judge.
 * **One rule, out of fifty criteria.** This shows the mechanism works on
@@ -180,17 +121,6 @@ suite.
   unverified, exactly like `ESCAPED`.** The crash handler covers the
   *process* dying; it cannot cover the machine dying or a run being
   killed. Do not read a missing verdict as a clean refusal.
-* The rule separates a finding from a category by length (50 characters
-  of description). A memo listing five genuine findings more tersely
-  than that would be blocked. No memo in the 28 scored does this, so the
-  risk is unmeasured rather than ruled out.
-* The count is stable under the parser enforcement actually uses — LAB
-  parses `.docx` with `pandoc --wrap=none` — but not under every parser.
-  `runJ_r1` counts 5 under `--wrap=none` and 1 under `--columns=72`,
-  because that mode wraps list continuations to the margin with no
-  indent and the scan reads them as prose ending the list. An earlier
-  commit message claimed identical verdicts under both modes on every
-  memo; that claim was wrong.
 * `/v1/me` returns 403 on both auth headers, so the ICME credit balance
   cannot be read from here. Runs themselves work, so the key is valid.
 * Most of the bugs above were found by running or probing the system,
@@ -206,17 +136,18 @@ suite.
 
 ## Verifying a memo by hand
 
-Use the parser enforcement uses, or you are grading a different document:
+Use the parser enforcement uses, or you are grading a different document
+— a hand-rolled XML strip misreads Word structure:
 
 ```bash
 pandoc runs/<id>/output/red-flag-memo.docx -t markdown --wrap=none -o /tmp/m.md
-PYTHONPATH=. python3 -c "from hook.drafting import exec_summary_findings; \
-print(exec_summary_findings(open('/tmp/m.md').read()))"
+PYTHONPATH=. python3 -c "
+import json; from hook.drafting import EngagementConfig, flagged_cleared_items
+c = EngagementConfig.from_dict(json.load(open('policy/engagement.json')))
+print(flagged_cleared_items(open('/tmp/m.md').read(), c.cleared_items))"
 ```
 
-A hand-rolled XML strip does not work. Word stores list numbering in
-`numbering.xml`, not in the paragraph text, so it reports conforming
-memos as failures.
+Anything printed is a cleared matter the memo raised as a red flag.
 
 ## Note for upstream
 
