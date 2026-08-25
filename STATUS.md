@@ -8,6 +8,24 @@ Yes. A firm drafting rule is enforced automatically on Harvey LAB's own
 task, every decision leaves a receipt, and nothing in `harvey-labs` is
 modified.
 
+## What is enforced
+
+Two rules, one per deliverable, each in its own compiled policy.
+
+| Rule | Deliverable | LAB criterion | How faithful |
+|---|---|---|---|
+| Executive summary lists 5+ described findings | `red-flag-memo.docx` | C-036 | a deliberately stricter stand-in for a semantic criterion |
+| At most two required columns missing | `red-flag-tracker.xlsx` | C-043 | **verbatim** — the criterion states its own list and its own threshold |
+
+C-043 is the one rule enforced exactly as written. Measured against 28
+graded trackers it agrees with LAB's judge on 25. All three
+disagreements run the same way — the guard permits, the judge fails —
+and in each the judge names exactly two missing columns while its own
+criterion fails only at *more* than two. **The judge does not apply the
+threshold it states.** A deterministic check is more faithful to the
+written standard than the grader is, which is the argument for having
+one.
+
 ## Results
 
 Every run under the current architecture:

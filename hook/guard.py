@@ -48,6 +48,7 @@ import re
 
 from hook import action_text as at
 from hook.drafting import EngagementConfig, check_draft, citeable_names
+from hook.tracker import check_tracker
 from hook.ledger import Ledger
 
 try:                                    # LAB's output mount
@@ -107,6 +108,24 @@ class GuardConfig:
     # executive summary, and reverted the tracker four times running. A
     # rule about memoranda has nothing to say about a spreadsheet.
     governed_deliverable: str = "red-flag-memo.docx"
+    # LAB's C-043 governs the tracker: "FAIL if more than two of these
+    # columns are missing". That criterion states its own list and its
+    # own threshold, so unlike the executive-summary rule it is enforced
+    # verbatim rather than through a stricter stand-in. Scoped to the
+    # tracker for the same reason Rule 1 is scoped to the memorandum.
+    governed_tracker: str = "red-flag-tracker.xlsx"
+    # ONE POLICY PER STANDARD. Compiling both rules together made every
+    # conforming tracker UNSAT: the extractor defaults an unmentioned Int
+    # to 0, so a tracker action -- which says nothing about an executive
+    # summary -- bound numberOfFindingsInExecutiveSummary = 0, the
+    # memorandum rule fired (0 < 5), and its conclusion contradicted the
+    # action's own "permitted". Measured: identical tracker text returns
+    # SAT with the conclusion sentence removed and UNSAT with it. The
+    # other way out -- stating a findings count inside a tracker action --
+    # would be testimony about a document that was never read, which is
+    # the failure this hook exists to avoid. Separate policies keep each
+    # rule's variables to itself.
+    tracker_policy_id: str | None = None
     # Whether a block names the missing element. True is what a firm
     # would do; False is the demo's control arm — the gate alone, no
     # repair signal. Enforcement and the ledger are identical either way.
@@ -137,8 +156,28 @@ class DraftingGuard:
         return getattr(self._inner, "sandbox", None)
 
     def _deliverable_paths(self) -> list[str]:
-        """Only the deliverable this standard governs."""
-        return [f"{_OUTPUT_PATH}/{self._cfg.governed_deliverable}"]
+        """The deliverables these standards govern, each by its own rule."""
+        return [f"{_OUTPUT_PATH}/{self._cfg.governed_deliverable}",
+                f"{_OUTPUT_PATH}/{self._cfg.governed_tracker}"]
+
+    def _is_tracker(self, path: str) -> bool:
+        return (Path(path).name.lower()
+                == self._cfg.governed_tracker.lower())
+
+    def _facts_for(self, name: str, text: str):
+        """Which rule applies to this deliverable, its block message, and
+        the policy that rule lives in. One rule per deliverable, one
+        policy per rule; neither is ever asked about the other's
+        document."""
+        if self._is_tracker(name):
+            t = check_tracker(text)
+            return (at.tracker_action(name, t),
+                    at.tracker_block_message(t, self._cfg.explain_blocks),
+                    self._cfg.tracker_policy_id or self._cfg.policy_id)
+        f = check_draft(text, self._cfg.engagement, self._doc_names)
+        return (at.deliverable_action(name, f),
+                at.block_message(f, self._cfg.explain_blocks),
+                self._cfg.policy_id)
 
     def _snapshot(self) -> dict[str, bytes | None]:
         """Current bytes of each deliverable, or None if absent."""
@@ -227,10 +266,8 @@ class DraftingGuard:
                     f"Blocked by firm drafting standard: {name} could "
                     f"not be read for checking, so it was not kept.")
 
-            findings = check_draft(text, self._cfg.engagement,
-                                   self._doc_names)
-            facts = at.deliverable_action(name, findings)
-            res = self._checked(facts)
+            facts, block_text, policy_id = self._facts_for(name, text)
+            res = self._checked(facts, policy_id)
             if res is None:
                 alarm = self._revert_or_alarm(tool_name, path,
                                               before.get(path))
@@ -258,12 +295,10 @@ class DraftingGuard:
                                               before.get(path))
                 if alarm:
                     return alarm
-                msg = at.block_message(findings,
-                                       explain=self._cfg.explain_blocks)
                 tail = (f"\n\n{name} was not kept. Revise and produce it "
                         f"again." if self._cfg.explain_blocks
                         else f"\n\n{name} was not kept.")
-                return msg + tail
+                return block_text + tail
         return None
 
     def __getattr__(self, name):
@@ -523,10 +558,12 @@ class DraftingGuard:
             note = (note + " [unreadable verdict — fail-closed]").strip()
         return verdict == "UNSAT", verdict, note
 
-    def _checked(self, facts: at.ActionFacts) -> dict | None:
+    def _checked(self, facts: at.ActionFacts,
+                 policy_id: str | None = None) -> dict | None:
         for attempt in range(self._cfg.max_retries):
             try:
-                return self._client.check_it(self._cfg.policy_id, facts.text)
+                return self._client.check_it(
+                    policy_id or self._cfg.policy_id, facts.text)
             except PreflightUnreachable:
                 if attempt + 1 < self._cfg.max_retries:
                     time.sleep(self._cfg.retry_wait_s * (attempt + 1))

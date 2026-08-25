@@ -31,12 +31,31 @@ REPO = Path(__file__).resolve().parent.parent
 CONTROLS = REPO / "policy" / "controls.md"
 POLICY_JSON = REPO / "policy" / "policy.json"
 
+# One policy per standard. Compiling both rules into a single policy
+# produced a false block on every conforming tracker: the extractor
+# defaults an unmentioned Int to 0, so a tracker action -- which says
+# nothing about an executive summary -- bound
+# numberOfFindingsInExecutiveSummary = 0, the memorandum rule fired
+# (0 < 5), and its conclusion contradicted the action's own "permitted".
+# Measured directly: identical tracker text returns SAT with the
+# conclusion sentence removed and UNSAT with it. The alternative --
+# stating a findings count inside a tracker action -- would be testimony
+# about a document that was not read, which is the one thing this hook
+# must never do. So each rule gets its own policy and its own variables.
 
-def rules_text() -> str:
+
+def _paths(args):
+    controls = Path(getattr(args, "controls", None) or CONTROLS)
+    out = Path(getattr(args, "out", None) or POLICY_JSON)
+    return controls, out
+
+
+def rules_text(controls: Path = None) -> str:
     # Strip the markdown header and HTML comments; makeRules gets only
     # the rules.
     import re
-    text = re.sub(r"<!--.*?-->", "", CONTROLS.read_text(encoding="utf-8"),
+    text = re.sub(r"<!--.*?-->", "",
+                  (controls or CONTROLS).read_text(encoding="utf-8"),
                   flags=re.DOTALL)
     lines = [ln for ln in text.splitlines()
              if ln.strip() and not ln.startswith("#")]
@@ -49,19 +68,20 @@ def saved_policy_id() -> str:
     return json.loads(POLICY_JSON.read_text())["policy_id"]
 
 
-def cmd_compile(client, _args):
+def cmd_compile(client, args):
     # makeRules costs 300 credits and there is no recovery endpoint: the
     # policy_id exists only in the stream. Log every event to disk AS IT
     # ARRIVES, before any parsing, so the id is recoverable by grep even
     # if the done event is malformed.
+    controls, out = _paths(args)
     LOG = REPO / "policy" / f"raw-makeRules-{int(datetime.now().timestamp())}.log"
-    if POLICY_JSON.exists():
+    if out.exists():
         raise SystemExit(
-            f"{POLICY_JSON} already exists (policy_id="
-            f"{saved_policy_id()}). Compiling again costs another 300 "
-            f"credits and mints a NEW policy id. Delete the file first if "
-            f"you really mean it.")
-    text = rules_text()
+            f"{out} already exists (policy_id="
+            f"{json.loads(out.read_text())['policy_id']}). Compiling again "
+            f"costs another 300 credits and mints a NEW policy id. Delete "
+            f"the file first if you really mean it.")
+    text = rules_text(controls)
     print("Compiling (makeRules, 300 credits, takes minutes)...\n")
     print(text, "\n")
     def _log(e):
@@ -78,13 +98,13 @@ def cmd_compile(client, _args):
             f"The 300 credits are spent. Recover the id with:\n"
             f"  grep -o '\"policy_id\":\"[^\"]*\"' {LOG}")
     print(f"  (raw event log: {LOG})")
-    POLICY_JSON.write_text(json.dumps({
+    out.write_text(json.dumps({
         "policy_id": policy_id,
         "compiled_at": datetime.now(timezone.utc).isoformat(),
         "source_sha256": hashlib.sha256(text.encode()).hexdigest(),
         "done_event": done,
     }, indent=2))
-    print(f"\npolicy_id: {policy_id}  (saved to {POLICY_JSON})")
+    print(f"\npolicy_id: {policy_id}  (saved to {out})")
 
 
 def cmd_scenarios(client, _args):
@@ -116,7 +136,9 @@ def cmd_test(client, _args):
 def main():
     p = argparse.ArgumentParser()
     sub = p.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("compile")
+    cp = sub.add_parser("compile")
+    cp.add_argument("--controls", help="rules source (default policy/controls.md)")
+    cp.add_argument("--out", help="where to save the policy id")
     sub.add_parser("scenarios")
     fb = sub.add_parser("feedback")
     fb.add_argument("--scenario-id", required=True)
