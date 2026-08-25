@@ -140,6 +140,28 @@ _MIN_EXEC_SUMMARY_FINDINGS = 5
 _MIN_ITEM_CHARS = 50
 _ITEM_PAYLOAD = re.compile(r"^[ \t]*(\(?\d+[.)]|[-*\u2022])\s*")
 
+# An item that announces HOW MANY findings it covers is a category, not a
+# finding. A finding describes one thing; a category says how many things
+# it contains. Both spellings seen in real memos:
+#     "Revenue & Customer Concentration (3 flags)"   <- count after label
+#     "CRITICAL (4 flags): Issues requiring ..."     <- count after label
+#     "CRITICAL ISSUES (3): Revenue cliff, debt ..." <- count in parens
+# Length alone does not catch these: runJ_r1's severity bands run 55-96
+# characters, well past _MIN_ITEM_CHARS, and five such bands would have
+# passed the gate on categories. On the 28 scored memos this exclusion
+# changes no count -- there the bands were already too short or formed a
+# shorter run than the real findings -- so it closes the hole without
+# moving any measured result.
+# "N flags" is distinctive enough to stand alone; "N issues" is not --
+# a real finding may say "5 issues remain unresolved" -- so the broader
+# nouns are only recognised in the parenthesised "ISSUES (3)" form,
+# where a bare count immediately after the noun is the category idiom.
+_TALLY_NOUN = r"(?:red[ -]?flags?|flags?|findings?)"
+_GROUP_NOUN = r"(?:red[ -]?flags?|flags?|findings?|issues?|items?|concerns?)"
+_CATEGORY_ITEM = re.compile(
+    rf"\(?\b\d+\s+{_TALLY_NOUN}\b\)?|\b{_GROUP_NOUN}\s*\(\s*\d+\s*\)",
+    re.I)
+
 # The next section heading after the executive summary.
 _SECTION_BOUNDARY = re.compile(
     r"^[ \t]*(?:"
@@ -379,6 +401,9 @@ def exec_summary_findings(text: str) -> int:
             run, prev_num = 0, None
             continue
         n, text = item
+        if _CATEGORY_ITEM.search(text):
+            run, prev_num = 0, None
+            continue
         if len(text) < _MIN_ITEM_CHARS:
             # A finding must be DESCRIBED, not merely named. runI_r1's
             # summary bulleted seven risk CATEGORIES -- "Revenue &

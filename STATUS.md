@@ -98,15 +98,27 @@ C-036 on both.
 Two things this exposed, both narrowing what the rule can be claimed to
 do:
 
-**Described categories are not excluded.** `runJ_r1`'s summary bullets
-four severity bands — "CRITICAL (4 flags): Issues requiring immediate
-resolution…" — each 55–96 characters, all above the length threshold.
-They are categories, the same shape that broke the rule in `runI_r1`,
-but they carry a sentence of description so length does not exclude
-them. The count came out right only because the bands form a run of
-**four** and `Key findings:` at the margin breaks the run. Five severity
-bands would have passed on categories again. Length separates *bare*
-category labels from findings; it does not separate *described* ones.
+**Described categories were not excluded — now fixed.** `runJ_r1`'s
+summary bullets four severity bands — "CRITICAL (4 flags): Issues
+requiring immediate resolution…" — each 55–96 characters, all above the
+length threshold. They are categories, the same shape that broke the
+rule in `runI_r1`, but they carry a sentence of description so length
+did not exclude them. The count came out right only because the bands
+form a run of **four** and `Key findings:` at the margin breaks the run;
+five bands would have passed the gate on categories again. Verified
+directly: five described bands counted 5 before the fix.
+
+An item that announces **how many** findings it covers is now read as a
+category. A finding describes one thing; a category says how many things
+it contains. Both idioms are recognised — "CRITICAL (4 flags):" and
+"CRITICAL ISSUES (3):". A bare tally noun stands alone only for
+flags/findings; the broader nouns (issues, items, concerns) count only
+in the parenthesised form, so a real finding saying "5 issues remain"
+is not excluded.
+
+On the 28 scored memos this changes **no count** — there the bands were
+already too short or formed a shorter run than the real findings — so it
+closes the hole without moving any measured result.
 
 **A character cap made the count depend on the parser.** The executive
 summary was truncated at 4000 raw characters, and `runJ_r2`'s summary is
@@ -172,8 +184,6 @@ suite.
   of description). A memo listing five genuine findings more tersely
   than that would be blocked. No memo in the 28 scored does this, so the
   risk is unmeasured rather than ruled out.
-* **A category with a sentence of description counts as a finding.** See
-  the `runJ_r1` note above. Five described categories would pass.
 * The count is stable under the parser enforcement actually uses — LAB
   parses `.docx` with `pandoc --wrap=none` — but not under every parser.
   `runJ_r1` counts 5 under `--wrap=none` and 1 under `--columns=72`,

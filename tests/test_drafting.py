@@ -425,3 +425,71 @@ class TestSummaryCapIsParserIndependent(unittest.TestCase):
         """The cap exists for a missed section boundary. Keep it working."""
         huge = self._summary(400, False)
         self.assertLess(exec_summary_findings(huge), 400)
+
+
+class TestDescribedCategoriesAreStillCategories(unittest.TestCase):
+    """Length alone did not close the category hole.
+
+    runJ_r1's summary bulleted four severity bands -- "CRITICAL (4
+    flags): Issues requiring immediate resolution..." -- of 55-96
+    characters each, well past _MIN_ITEM_CHARS. The count came out right
+    only because they formed a run of FOUR and a margin line broke it.
+    Five bands would have passed the gate on categories, which is the
+    failure that already cost a false pass once (runI_r1).
+
+    An item that announces HOW MANY findings it covers is a category. A
+    finding describes one thing; a category says how many it contains.
+    """
+
+    BANDS = ("# EXECUTIVE SUMMARY\n\n"
+             "• CRITICAL (4 flags): Issues requiring immediate resolution "
+             "or creating material transaction risk\n"
+             "• HIGH (8 flags): Significant issues requiring detailed due "
+             "diligence and mitigation planning\n"
+             "• MEDIUM (6 flags): Moderate issues requiring attention and "
+             "contingency planning before close\n"
+             "• LOW (2 flags): Administrative or lower-priority issues "
+             "that can be handled post-closing\n"
+             "• INFORMATIONAL (3 flags): Context items noted for "
+             "completeness during the review process\n\n"
+             "# DETAILED FINDINGS\n")
+
+    def test_five_described_severity_bands_do_not_pass(self):
+        self.assertEqual(exec_summary_findings(self.BANDS), 0,
+                         "a described category is still a category")
+
+    def test_count_in_parentheses_after_the_noun_is_also_a_category(self):
+        text = ("# EXECUTIVE SUMMARY\n\n"
+                + "".join(
+                    f"- {sev} ISSUES ({n}): several matters grouped here "
+                    f"and summarised at length for the reader.\n"
+                    for sev, n in (("CRITICAL", 3), ("HIGH", 6),
+                                   ("MEDIUM", 7), ("LOW", 4),
+                                   ("MINOR", 2)))
+                + "\n# DETAILED FINDINGS\n")
+        self.assertEqual(exec_summary_findings(text), 0)
+
+    def test_a_finding_that_mentions_a_count_still_counts(self):
+        """"5 issues remain" inside a real finding must not exclude it."""
+        text = ("# EXECUTIVE SUMMARY\n\n" + "".join(
+            f"{i}. Permit transfer delayed 2.75 years with 5 issues still "
+            f"unresolved and exposure quantified at $1.2M in finding {i}.\n"
+            for i in range(1, 6)) + "\n# DETAILED FINDINGS\n")
+        self.assertEqual(exec_summary_findings(text), 5)
+
+    def test_real_findings_with_figures_are_not_excluded(self):
+        text = ("# EXECUTIVE SUMMARY\n\n"
+                "1. Fleet Replacement Backlog: 38 of 85 fleet vehicles are "
+                "at or past useful life, $9.8M replacement cost.\n"
+                "2. Wage claim from approximately 8 former employees "
+                "alleging improper overtime classification.\n"
+                "3. Two open workers compensation claims from former "
+                "asbestos abatement employees, pre-2015 work.\n"
+                "4. EBITDA gap of $1.0M between the CIM and the QofE data "
+                "package, with no reconciliation provided.\n"
+                "5. NLRB election petition covering 62 field technicians "
+                "at the Grand Junction and Casper facilities.\n"
+                "\n# DETAILED FINDINGS\n")
+        self.assertEqual(exec_summary_findings(text), 5,
+                         "counts inside a finding are not a tally of "
+                         "findings")
