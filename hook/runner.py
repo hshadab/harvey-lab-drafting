@@ -192,8 +192,12 @@ def main():
         engagement=engagement,
         ledger_path=str(results_dir / "ledger.jsonl"),
         explain_blocks=not args.bare_blocks,
+        tracker_policy_id=args.tracker_policy_id,
     ))
-    print(f"Drafting guard up: policy {args.policy_id}, "
+    tracker_note = (args.tracker_policy_id
+                    or "NONE - tracker ungoverned")
+    print(f"Drafting guard up: memo policy {args.policy_id}, "
+          f"tracker policy {tracker_note}, "
           f"governs {guard.config.governed_deliverable} "
           f"(of {deliverables}), "
           f"client={engagement.client_names[:1]} firm={engagement.firm_names[:1]}")

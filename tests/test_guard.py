@@ -142,12 +142,14 @@ class FakeClient:
                 "verification_time_ms": 5}
 
 
-def make_guard(client, tmp, writes=None, explain_blocks=True):
+def make_guard(client, tmp, writes=None, explain_blocks=True,
+               tracker_policy_id=None):
     inner = FakeInner(writes)
     g = DraftingGuard(inner, client, GuardConfig(
         policy_id="pol-1", documents_dir=str(tmp),
         engagement=CONFIG, ledger_path=str(Path(tmp) / "ledger.jsonl"),
-        max_retries=1, retry_wait_s=0, explain_blocks=explain_blocks))
+        max_retries=1, retry_wait_s=0, explain_blocks=explain_blocks,
+        tracker_policy_id=tracker_policy_id))
     return g, inner
 
 
@@ -269,7 +271,8 @@ class TestRuleScope(unittest.TestCase):
         tracker = "/workspace/output/red-flag-tracker.xlsx"
         c = FakeClient("SAT")
         g, inner = make_guard(c, self.tmp,
-                              writes={"bash": {tracker: GOOD_TRACKER}})
+                              writes={"bash": {tracker: GOOD_TRACKER}},
+                              tracker_policy_id="tracker-policy")
         bash(g, "python build_tracker.py")
         self.assertEqual(len(c.actions), 1)
         said = c.actions[0]
@@ -284,7 +287,8 @@ class TestRuleScope(unittest.TestCase):
         tracker = "/workspace/output/red-flag-tracker.xlsx"
         c = FakeClient("SAT")
         g, inner = make_guard(c, self.tmp,
-                              writes={"bash": {tracker: GOOD_TRACKER}})
+                              writes={"bash": {tracker: GOOD_TRACKER}},
+                              tracker_policy_id="tracker-policy")
         out = bash(g, "python build_tracker.py")
         self.assertEqual(out, "OK: executed")
         self.assertIn(tracker, inner.sandbox.files)
@@ -814,14 +818,28 @@ class TestOnePolicyPerStandard(unittest.TestCase):
         self.assertNotIn("executive summary", said)
         self.assertNotIn("findings listed", said)
 
-    def test_falls_back_to_one_policy_when_no_tracker_policy_is_set(self):
-        """Older runs configured a single policy; keep them working."""
-        c = RecordingClient("SAT")
+    def test_without_a_tracker_policy_the_tracker_is_not_governed(self):
+        """A rule with no policy is not enforced -- it is never handed to
+        another rule's policy.
+
+        runK_r1 blocked a conforming tracker four times: the runner never
+        passed tracker_policy_id into GuardConfig, and the old
+        `tracker_policy_id or policy_id` fallback quietly checked the
+        tracker against the MEMORANDUM policy, which refuses every
+        tracker. A silent downgrade to the wrong rule is worse than no
+        rule.
+        """
+        c = RecordingClient("UNSAT")
         inner = FakeInner({"bash": {self.tracker: GOOD_TRACKER}})
         g = DraftingGuard(inner, c, GuardConfig(
-            policy_id="only-policy", documents_dir=str(self.tmp),
+            policy_id="memo-policy", documents_dir=str(self.tmp),
             engagement=CONFIG,
             ledger_path=str(Path(self.tmp) / "ledger.jsonl"),
             max_retries=1, retry_wait_s=0))
-        bash(g, "python build_tracker.py")
-        self.assertEqual([p for p, _ in c.calls], ["only-policy"])
+        out = bash(g, "python build_tracker.py")
+        self.assertEqual(c.calls, [],
+                         "the tracker must not be checked against the "
+                         "memorandum policy")
+        self.assertIn(self.tracker, inner.sandbox.files,
+                      "an ungoverned tracker must survive")
+        self.assertEqual(out, "OK: executed")

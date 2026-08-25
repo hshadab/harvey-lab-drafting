@@ -156,9 +156,22 @@ class DraftingGuard:
         return getattr(self._inner, "sandbox", None)
 
     def _deliverable_paths(self) -> list[str]:
-        """The deliverables these standards govern, each by its own rule."""
-        return [f"{_OUTPUT_PATH}/{self._cfg.governed_deliverable}",
-                f"{_OUTPUT_PATH}/{self._cfg.governed_tracker}"]
+        """The deliverables these standards govern, each by its own rule.
+
+        The tracker is governed only when its own policy is configured.
+        runK_r1 blocked a conforming tracker four times because
+        tracker_policy_id never reached GuardConfig -- the runner parsed
+        it and wrote it to config.json but did not pass it -- and the
+        old `tracker_policy_id or policy_id` fallback quietly checked the
+        tracker against the MEMORANDUM policy, which refuses every
+        tracker for the cross-binding reason documented above. A rule
+        with no policy is not enforced; it is never handed to another
+        rule's policy.
+        """
+        paths = [f"{_OUTPUT_PATH}/{self._cfg.governed_deliverable}"]
+        if self._cfg.tracker_policy_id:
+            paths.append(f"{_OUTPUT_PATH}/{self._cfg.governed_tracker}")
+        return paths
 
     def _is_tracker(self, path: str) -> bool:
         return (Path(path).name.lower()
@@ -173,7 +186,7 @@ class DraftingGuard:
             t = check_tracker(text)
             return (at.tracker_action(name, t),
                     at.tracker_block_message(t, self._cfg.explain_blocks),
-                    self._cfg.tracker_policy_id or self._cfg.policy_id)
+                    self._cfg.tracker_policy_id)
         f = check_draft(text, self._cfg.engagement, self._doc_names)
         return (at.deliverable_action(name, f),
                 at.block_message(f, self._cfg.explain_blocks),
