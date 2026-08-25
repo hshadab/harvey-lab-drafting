@@ -1,0 +1,26 @@
+# The offline suite: no network, no API key, no credits. Everything a
+# recorded run depends on that CAN be tested without spending is tested
+# here; the sandbox-contract tests skip when harvey-labs is absent, which
+# it is in CI, and that skip is expected.
+name: tests
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Run the offline suite
+        run: python -m unittest discover -s tests -v
+      - name: Lint
+        run: |
+          pip install --quiet pyflakes
+          python -m pyflakes hook tests scripts
