@@ -38,6 +38,8 @@ blocked and the outage is recorded, so no run contains a silent gap.
 from __future__ import annotations
 
 import json
+import shlex
+import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -147,17 +149,43 @@ class DraftingGuard:
                 out[path] = None
         return out
 
-    def _revert(self, path: str, previous: bytes | None) -> None:
+    def _revert(self, path: str, previous: bytes | None) -> bool:
+        """Put `path` back the way it was. True only if that is confirmed.
+
+        A revert that fails is the guarantee failing, so this verifies the
+        filesystem afterwards rather than trusting the call. runF_r2
+        shipped a blocked memorandum because this used
+        sb.exec(["rm", "-f", path]) -- LAB's Sandbox.exec takes a command
+        STRING, the call raised TypeError, and a bare `except: pass`
+        swallowed it. The blocked .docx stayed on disk and was delivered.
+        Never silently; a failed revert is louder than a block.
+        """
         sb = self._sandbox()
         if sb is None:
-            return
+            return False
         try:
             if previous is None:
-                sb.exec(["rm", "-f", path])
-            else:
-                sb.write_file(path, previous)
-        except Exception:
-            pass                      # reported by the caller either way
+                sb.exec(f"rm -f {shlex.quote(path)}")
+                return not sb.exists(path)
+            sb.write_file(path, previous)
+            return sb.read_file(path) == previous
+        except Exception as exc:
+            print(f"REVERT FAILED for {path}: {exc!r}", file=sys.stderr)
+            return False
+
+    def _revert_or_alarm(self, tool_name: str, path: str,
+                         previous: bytes | None) -> str | None:
+        """Revert, and if that fails say so instead of implying success."""
+        if self._revert(path, previous):
+            return None
+        name = Path(path).name
+        self._ledger.record(
+            tool=tool_name, summary=f"revert-failed: {name}",
+            action_text=f"revert {name}", result="REVERT-FAILED",
+            detail="deliverable was non-compliant and could NOT be removed")
+        return (f"SecurityError: {name} is non-compliant and the guard "
+                f"could not remove it. Delete {path} yourself before "
+                f"doing anything else; it must not be delivered.")
 
     def _verify_artifacts(self, before: dict[str, bytes | None],
                           tool_name: str) -> str | None:
@@ -185,26 +213,30 @@ class DraftingGuard:
             try:
                 text = self._inner._read_and_parse(path)
             except Exception as exc:
-                self._revert(path, before.get(path))
+                alarm = self._revert_or_alarm(tool_name, path,
+                                              before.get(path))
                 self._ledger.record(
                     tool=tool_name, summary=f"verify: {name}",
                     action_text=f"verify: {name}", result="UNSAT",
                     detail=f"deliverable unreadable ({exc}); reverted")
-                return (f"Blocked by firm drafting standard: {name} could "
-                        f"not be read for checking, so it was not kept.")
+                return alarm or (
+                    f"Blocked by firm drafting standard: {name} could "
+                    f"not be read for checking, so it was not kept.")
 
             findings = check_draft(text, self._cfg.engagement,
                                    self._doc_names)
             facts = at.deliverable_action(name, findings)
             res = self._checked(facts)
             if res is None:
-                self._revert(path, before.get(path))
+                alarm = self._revert_or_alarm(tool_name, path,
+                                              before.get(path))
                 self._ledger.record(
                     tool=tool_name, summary=f"verify: {name}",
                     action_text=facts.text, result="OUTAGE-BLOCKED",
                     detail="Preflight unreachable; deliverable reverted")
-                return ("SecurityError: firm drafting-standards check "
-                        f"unavailable; {name} was not kept.")
+                return alarm or (
+                    "SecurityError: firm drafting-standards check "
+                    f"unavailable; {name} was not kept.")
 
             blocked, verdict, note = self._decide(res)
             self._ledger.record(
@@ -218,7 +250,10 @@ class DraftingGuard:
                 self._cfg.proof_queue.append(pid)
 
             if blocked:
-                self._revert(path, before.get(path))
+                alarm = self._revert_or_alarm(tool_name, path,
+                                              before.get(path))
+                if alarm:
+                    return alarm
                 return (at.block_message(findings) +
                         f"\n\n{name} was not kept. Revise and produce it "
                         f"again.")

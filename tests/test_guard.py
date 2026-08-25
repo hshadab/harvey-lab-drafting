@@ -11,6 +11,10 @@ despite neither ever becoming a deliverable.
 """
 
 import json
+import sys
+import os
+import inspect
+import shlex
 import tempfile
 import unittest
 from pathlib import Path
@@ -44,10 +48,19 @@ TRACKER_SCRIPT = ("cat > /tmp/build_tracker.py << 'PYEOF'\n"
 
 
 class FakeSandbox:
-    """Stands in for LAB's Sandbox: a dict of path -> bytes."""
+    """Stands in for LAB's Sandbox: a dict of path -> bytes.
+
+    Every method here mimics the REAL signature, and rejects anything the
+    real Sandbox would reject. The previous version accepted a list from
+    exec(); the real Sandbox takes a command string, so 41 tests passed
+    against an API that does not exist and runF_r2 shipped a blocked
+    memorandum. A fake that is more permissive than the thing it fakes is
+    not a test, it is a second bug. TestSandboxContract below pins these
+    signatures to the real class so the two cannot drift again.
+    """
     def __init__(self):
         self.files: dict[str, bytes] = {}
-        self.execs: list[list[str]] = []
+        self.execs: list[str] = []
 
     def exists(self, path):
         return path in self.files
@@ -58,10 +71,16 @@ class FakeSandbox:
     def write_file(self, path, content):
         self.files[path] = content if isinstance(content, bytes) else content.encode()
 
-    def exec(self, cmd, **kw):
-        self.execs.append(cmd)
-        if cmd[:2] == ["rm", "-f"]:
-            self.files.pop(cmd[2], None)
+    def exec(self, command, **kw):
+        if not isinstance(command, str):
+            raise TypeError(
+                "Sandbox.exec takes a command string, not "
+                f"{type(command).__name__}")
+        self.execs.append(command)
+        parts = shlex.split(command)
+        if parts[:2] == ["rm", "-f"]:
+            for target in parts[2:]:
+                self.files.pop(target, None)
         return type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
 
 
@@ -343,3 +362,89 @@ class TestFailureModes(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestSandboxContract(unittest.TestCase):
+    """Pin FakeSandbox's signatures to the real LAB Sandbox.
+
+    This is the test that was missing. runF_r2 delivered a memorandum the
+    guard had blocked, because _revert called
+    sb.exec(["rm", "-f", path]) while LAB's Sandbox.exec takes a command
+    string. The fake accepted the list, every test passed, and a bare
+    `except Exception: pass` hid the TypeError at runtime. Comparing the
+    fake to the real class closes that gap without importing a sandbox or
+    starting a container.
+    """
+
+    def _real(self):
+        lab = os.environ.get("HARVEY_LABS_ROOT",
+                             str(Path.home() / "harvey-labs"))
+        if not (Path(lab) / "sandbox" / "sandbox.py").exists():
+            self.skipTest(f"harvey-labs not found at {lab}")
+        if lab not in sys.path:
+            sys.path.insert(0, lab)
+        from sandbox.sandbox import Sandbox
+        return Sandbox
+
+    def test_fake_matches_real_signatures(self):
+        real = self._real()
+        for meth in ("exec", "read_file", "write_file", "exists"):
+            got = list(inspect.signature(
+                getattr(FakeSandbox, meth)).parameters)
+            want = list(inspect.signature(
+                getattr(real, meth)).parameters)
+            self.assertEqual(
+                got[1], want[1],
+                f"FakeSandbox.{meth} first argument is {got[1]!r} but the "
+                f"real Sandbox.{meth} takes {want[1]!r}")
+
+    def test_real_exec_takes_a_string(self):
+        real = self._real()
+        ann = inspect.signature(real.exec).parameters["command"].annotation
+        self.assertEqual(ann, "str",
+                         "guard._revert builds a shell string; if this "
+                         "changes, _revert must change with it")
+
+
+class TestRevertIsVerified(unittest.TestCase):
+    """A revert that fails must be louder than a block, never silent."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.memo = "/workspace/output/red-flag-memo.docx"
+
+    def test_blocked_deliverable_is_actually_gone(self):
+        c = FakeClient("UNSAT")
+        g, inner = make_guard(c, self.tmp,
+                              writes={"bash": {self.memo: b"memo bytes"}})
+        out = bash(g, "cp /tmp/test-out.docx $OUTPUT_DIR/red-flag-memo.docx")
+        self.assertIn("was not kept", out)
+        self.assertNotIn(self.memo, inner.sandbox.files,
+                         "a blocked memo must not survive on disk")
+        self.assertEqual(inner.sandbox.execs, ["rm -f " + self.memo])
+
+    def test_revert_failure_is_reported_not_swallowed(self):
+        c = FakeClient("UNSAT")
+        g, inner = make_guard(c, self.tmp,
+                              writes={"bash": {self.memo: b"memo bytes"}})
+
+        def stubborn(command, **kw):       # deletion silently does nothing
+            inner.sandbox.execs.append(command)
+            return type("R", (), {"returncode": 1})()
+        inner.sandbox.exec = stubborn
+
+        out = bash(g, "cp /tmp/x.docx $OUTPUT_DIR/red-flag-memo.docx")
+        self.assertIn("could not remove", out)
+        self.assertIn("SecurityError", out)
+        entries = [json.loads(l) for l
+                   in open(g.ledger.path, encoding="utf-8")]
+        self.assertTrue(any(e["result"] == "REVERT-FAILED" for e in entries),
+                        "a failed revert must appear in the ledger")
+
+    def test_revert_restores_previous_bytes_when_one_existed(self):
+        c = FakeClient("UNSAT")
+        g, inner = make_guard(c, self.tmp,
+                              writes={"bash": {self.memo: b"memo bytes"}})
+        inner.sandbox.files[self.memo] = b"PRIOR-GOOD"
+        bash(g, "cp /tmp/x.docx $OUTPUT_DIR/red-flag-memo.docx")
+        self.assertEqual(inner.sandbox.files[self.memo], b"PRIOR-GOOD")
