@@ -265,6 +265,14 @@ class DraftingGuard:
         return getattr(self._inner, name)
 
     @property
+    def config(self) -> GuardConfig:
+        return self._cfg
+
+    @property
+    def doc_names(self) -> set[str]:
+        return self._doc_names
+
+    @property
     def ledger(self) -> Ledger:
         return self._ledger
 

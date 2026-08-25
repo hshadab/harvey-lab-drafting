@@ -53,7 +53,56 @@ def parse_args():
     p.add_argument("--reasoning-effort", default=None)
     p.add_argument("--skills", nargs="*", default=None)
     p.add_argument("--runs-dir", default=str(REPO_ROOT / "runs"))
+    p.add_argument("--no-briefing", action="store_true",
+                   help="do not state the standard up front; the agent "
+                        "learns it only from blocks (enforcement is "
+                        "unchanged)")
     return p.parse_args()
+
+
+def final_state(guard) -> dict:
+    """What is actually on disk when the run ends, established by reading
+    it — not inferred from the ledger.
+
+    runF_r2 ended with a blocked memorandum still in the output directory
+    while the ledger recorded a successful block. A receipt that says a
+    file was stopped, next to that file, is worse than no receipt. So the
+    run ends by looking.
+
+    Three outcomes, and only the first two are acceptable:
+      DELIVERED  a conforming deliverable exists
+      REFUSED    nothing was issued, and the run says so out loud
+      ESCAPED    a non-conforming deliverable survived; the guarantee
+                 failed and the run must not be used
+    """
+    from hook.drafting import check_draft
+
+    name = guard.config.governed_deliverable
+    path = f"/workspace/output/{name}"
+    try:
+        if not guard.sandbox.exists(path):
+            return {"state": "REFUSED", "deliverable": name,
+                    "exec_summary_findings": None,
+                    "detail": f"{name} was never produced to the required "
+                              f"standard, so nothing is being issued."}
+        text = guard._read_and_parse(path)
+        findings = check_draft(text, guard.config.engagement,
+                               guard.doc_names)
+        n = findings.exec_summary_findings
+        if findings.exec_summary_ok:
+            return {"state": "DELIVERED", "deliverable": name,
+                    "exec_summary_findings": n,
+                    "detail": f"{name} lists {n} findings in its executive "
+                              f"summary."}
+        return {"state": "ESCAPED", "deliverable": name,
+                "exec_summary_findings": n,
+                "detail": f"{name} lists only {n} findings in its executive "
+                          f"summary and is on disk anyway."}
+    except Exception as exc:
+        return {"state": "ESCAPED", "deliverable": name,
+                "exec_summary_findings": None,
+                "detail": f"final state could not be established ({exc!r}); "
+                          f"treat as unverified."}
 
 
 def main():
@@ -73,7 +122,7 @@ def main():
     from harness.tools import ToolExecutor, get_all_tool_definitions
     from sandbox.sandbox import DEFAULT_IMAGE, Sandbox
 
-    from hook.drafting import EngagementConfig
+    from hook.drafting import EngagementConfig, standard_briefing
     from hook.guard import DraftingGuard, GuardConfig
     from hook.ledger import load_entries, render_markdown
     from hook.preflight_client import PreflightClient
@@ -127,6 +176,12 @@ def main():
     if skill_names:
         system_prompt += load_skills(skill_names)
         setup_skill_scripts(skill_names, workspace_dir)
+    # State the standard before the work starts, the way a firm briefs an
+    # associate. --no-briefing reproduces the earlier behaviour where the
+    # agent learns the rule only by being blocked; enforcement is
+    # identical either way, since the guard recomputes every fact itself.
+    if not args.no_briefing:
+        system_prompt += standard_briefing(GuardConfig.governed_deliverable)
 
     (results_dir / "config.json").write_text(json.dumps({
         "model": args.model, "task": args.task, "run_id": args.run_id,
@@ -136,6 +191,7 @@ def main():
         "started_at": datetime.now(timezone.utc).isoformat(),
     }, indent=2))
 
+    verdict = {"state": "REFUSED", "detail": "run did not complete"}
     try:
         result = run_agent(
             adapter=adapter,
@@ -147,6 +203,10 @@ def main():
             transcript_path=str(results_dir / "transcript.jsonl"),
         )
     finally:
+        # While the sandbox is still up: LAB parses .docx INSIDE it on
+        # purpose, so the final verdict uses the guard's own reader
+        # rather than parsing an agent-written binary on the host.
+        verdict = final_state(guard)
         sandbox.stop()
         guard.finish(results_dir / "ledger.json")
 
@@ -165,6 +225,23 @@ def main():
     unsat = sum(1 for e in entries if e["result"] == "UNSAT")
     print(f"\nDrafting run complete: {results_dir}")
     print(f"  checks: {len(entries)}  SAT: {sat}  UNSAT (blocked): {unsat}")
+
+    # The deliverable of this system is "a conforming memorandum, or a
+    # visible refusal with a reason" -- never "silently absent". runF_r2
+    # ended with a blocked file still on disk and nothing saying so, so
+    # the final state is now established by inspecting the artifact
+    # rather than inferred from the ledger.
+    (results_dir / "final_state.json").write_text(
+        json.dumps(verdict, indent=2))
+    banner = {
+        "DELIVERED": "DELIVERED: conforming to the firm standard.",
+        "REFUSED": "REFUSED: no conforming deliverable was produced. "
+                   "Nothing was issued.",
+        "ESCAPED": "ESCAPED: a NON-CONFORMING deliverable is on disk. "
+                   "The guarantee FAILED -- do not deliver this run.",
+    }[verdict["state"]]
+    rule = "=" * 72
+    print(f"\n{rule}\n  {banner}\n  {verdict['detail']}\n{rule}")
     print("\nScore it with LAB's own evaluator, e.g.:")
     print(f"  cd {args.lab_root} && uv run python -m evaluation.run_eval "
           f"--run-id <id> --task {args.task} --judge-model claude-sonnet-4-6")

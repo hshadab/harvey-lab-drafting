@@ -6,7 +6,8 @@ Run: python3 -m unittest tests.test_drafting -v
 import unittest
 
 from hook.action_text import block_message, deliverable_action
-from hook.drafting import (EngagementConfig, check_draft, has_cleared_section,
+from hook.drafting import (EngagementConfig, check_draft,
+                           exec_summary_findings, has_cleared_section,
                            split_red_flags)
 
 CONFIG = EngagementConfig(
@@ -203,3 +204,61 @@ class TestActionText(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestWrappedListItems(unittest.TestCase):
+    """The count must describe the DOCUMENT, not the parser's flags.
+
+    LAB parses .docx with `pandoc -t markdown --wrap=none`. Drop that flag
+    and pandoc wraps each item across indented continuation lines; the
+    counter read those as prose and reported 3 findings for a summary
+    listing 5. Enforcement was correct only because of a flag in someone
+    else's code.
+    """
+
+    ITEMS = [
+        "**DOE IDIQ Ceiling Exhaustion** --- the largest customer is "
+        "projected to exhaust its contract ceiling.",
+        "**EBITDA Overstatement** --- the CIM conflicts with the QoE "
+        "data package by $1.0M.",
+        "**Groundwater contamination** --- identified in the Phase II ESA.",
+        "**Permit expiry** --- two permits lapse within nine months.",
+        "**Wage-and-hour class action** --- pending in Utah state court.",
+    ]
+
+    def _summary(self, wrap_at=None):
+        lines = ["## Executive Summary", "", "The five most critical:", ""]
+        for i, item in enumerate(self.ITEMS, 1):
+            if wrap_at is None:
+                lines.append(f"{i}.  {item}")
+            else:
+                head, tail = item[:wrap_at], item[wrap_at:]
+                lines.append(f"{i}.  {head}")
+                lines.append(f"    {tail}")
+        lines += ["", "## Detailed Findings", ""]
+        return "\n".join(lines)
+
+    def test_unwrapped_list_counts_five(self):
+        self.assertEqual(exec_summary_findings(self._summary()), 5)
+
+    def test_wrapped_list_counts_the_same_five(self):
+        self.assertEqual(exec_summary_findings(self._summary(wrap_at=40)), 5,
+                         "wrapping an item must not change how many "
+                         "findings the summary lists")
+
+    def test_prose_at_the_margin_still_ends_the_list(self):
+        text = self._summary().replace(
+            "## Detailed Findings",
+            "These items are discussed below.\n\n1.  A later item.\n"
+            "2.  Another later item.\n\n## Detailed Findings")
+        self.assertEqual(exec_summary_findings(text), 5,
+                         "a restarting list after prose is a new list")
+
+    def test_wrapped_prose_paragraph_is_not_a_finding(self):
+        text = ("## Executive Summary\n\nWe identified fifteen (15) "
+                "material red flags across six categories:\n"
+                "    (1) Financial, (2) Environmental, (3) Commercial,\n"
+                "    (4) Real Property, (5) Legal, (6) Human Capital.\n\n"
+                "## Detailed Findings\n")
+        self.assertLess(exec_summary_findings(text), 5,
+                        "an inline count in prose is not an enumeration")

@@ -20,6 +20,8 @@ import unittest
 from pathlib import Path
 
 from hook.drafting import EngagementConfig
+from hook import runner
+from hook.drafting import standard_briefing
 from hook.guard import DraftingGuard, GuardConfig
 from hook.preflight_client import PreflightUnreachable
 
@@ -448,3 +450,92 @@ class TestRevertIsVerified(unittest.TestCase):
         inner.sandbox.files[self.memo] = b"PRIOR-GOOD"
         bash(g, "cp /tmp/x.docx $OUTPUT_DIR/red-flag-memo.docx")
         self.assertEqual(inner.sandbox.files[self.memo], b"PRIOR-GOOD")
+
+
+GOOD_SUMMARY = """MEMORANDUM
+
+Executive Summary
+
+1. Unexplained $1.0M revenue discrepancy in the Q3 QoE package.
+2. Phase II ESA identifies groundwater contamination at the Ogden site.
+3. Customer concentration: top two accounts are 41% of revenue.
+4. Two operating permits expire within nine months of closing.
+5. Pending wage-and-hour class action in Utah state court.
+
+Detailed Findings
+"""
+
+BAD_SUMMARY = """MEMORANDUM
+
+Executive Summary
+
+We identified fifteen (15) material red flags across six risk categories.
+
+Detailed Findings
+"""
+
+
+class TestFinalState(unittest.TestCase):
+    """The run must end by LOOKING at the artifact, not by trusting the
+    ledger. runF_r2's ledger recorded a successful block while the blocked
+    file sat in the output directory.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.memo = "/workspace/output/red-flag-memo.docx"
+
+    def _verdict(self, contents):
+        g, inner = make_guard(FakeClient("SAT"), self.tmp)
+        if contents is not None:
+            inner.sandbox.files[self.memo] = contents.encode()
+        return runner.final_state(g)
+
+    def test_conforming_deliverable_is_DELIVERED(self):
+        v = self._verdict(GOOD_SUMMARY)
+        self.assertEqual(v["state"], "DELIVERED")
+        self.assertEqual(v["exec_summary_findings"], 5)
+
+    def test_absent_deliverable_is_REFUSED_out_loud(self):
+        v = self._verdict(None)
+        self.assertEqual(v["state"], "REFUSED")
+        self.assertIn("nothing is being issued", v["detail"])
+
+    def test_nonconforming_deliverable_on_disk_is_ESCAPED(self):
+        v = self._verdict(BAD_SUMMARY)
+        self.assertEqual(v["state"], "ESCAPED",
+                         "a blocked file left on disk must be reported as "
+                         "a failed guarantee, never as a clean refusal")
+        self.assertEqual(v["exec_summary_findings"], 0)
+        self.assertIn("on disk anyway", v["detail"])
+
+    def test_unreadable_deliverable_is_never_silently_clean(self):
+        g, inner = make_guard(FakeClient("SAT"), self.tmp)
+        inner.sandbox.files[self.memo] = b"x"
+
+        def boom(path):
+            raise RuntimeError("corrupt docx")
+        inner._read_and_parse = boom
+        v = runner.final_state(g)
+        self.assertEqual(v["state"], "ESCAPED")
+
+
+class TestStandardBriefing(unittest.TestCase):
+    """Stating the standard changes what the agent KNOWS, never what is
+    ENFORCED."""
+
+    def test_briefing_quotes_the_enforced_threshold(self):
+        from hook.drafting import _MIN_EXEC_SUMMARY_FINDINGS
+        text = standard_briefing("red-flag-memo.docx")
+        self.assertIn(str(_MIN_EXEC_SUMMARY_FINDINGS), text)
+        self.assertIn("red-flag-memo.docx", text)
+
+    def test_briefing_does_not_relax_enforcement(self):
+        """A briefed agent that ignores the briefing is still blocked."""
+        c = FakeClient("UNSAT")
+        g, inner = make_guard(c, tempfile.mkdtemp(),
+                              writes={"bash": {
+                                  "/workspace/output/red-flag-memo.docx":
+                                  BAD_SUMMARY.encode()}})
+        out = bash(g, "cp /tmp/x.docx $OUTPUT_DIR/red-flag-memo.docx")
+        self.assertIn("was not kept", out)
