@@ -51,3 +51,8 @@ Rule 4: The agent may not write a final deliverable memorandum when the
 number of references to the engagement matter in the memorandum is zero.
 Writing a final deliverable memorandum while the number of references to
 the engagement matter it contains is zero is forbidden.
+
+Rule 5: The agent may not write a final deliverable memorandum when the
+number of findings listed in the memorandum's executive summary is fewer
+than five. Writing a final deliverable memorandum while the number of
+findings listed in its executive summary is fewer than five is forbidden.

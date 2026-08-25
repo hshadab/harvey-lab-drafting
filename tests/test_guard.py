@@ -25,7 +25,7 @@ CONFIG = EngagementConfig(
 COMPLIANT = (
     "MEMORANDUM\n"
     "To: Sycamore Capital Partners\nFrom: Thornfield & Associates LLP\n"
-    "Re: Project Ridgeline diligence red flags\n\n"
+    "Re: Project Ridgeline diligence red flags\n\n" + 'EXECUTIVE SUMMARY\n\nThe most significant concerns are:\n1. DOE ceiling exhaustion affecting the largest customer relationship.\n2. Unreconciled EBITDA discrepancy between the CIM and the QofE pack.\n3. Stale environmental assessment with no vapour intrusion work.\n4. Salt Lake City lease assignment consent never obtained.\n5. NLRB union election petition disclosed only in a footnote.\n6. Asbestos long-tail exposure against a blanket policy exclusion.\n\n' +
     "1. Environmental permit not transferred\n"
     + "The permit was never transferred to the buyer entity. " * 30 + "\n\n"
     "Items reviewed and cleared\n"

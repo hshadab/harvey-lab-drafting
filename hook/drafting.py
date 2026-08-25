@@ -98,6 +98,42 @@ _CLEARED_HEADING = re.compile(
 # satisfy the standard; require some prose beneath it.
 _MIN_CLEARED_CHARS = 120
 
+_EXEC_SUMMARY_HEADING = re.compile(
+    r"^[ \t]*(?:#{1,6}[ \t]*)?(?:[IVX]+\.[ \t]*|\d+[.)][ \t]*)?"
+    r"executive\s+summary[^\n]{0,40}$", re.I | re.M)
+
+# An enumerated finding inside the executive summary: a bullet or a
+# numbered item.
+_ENUMERATED_ITEM = re.compile(r"^[ \t]*(?:[-*\u2022]|\(?\d+[.)])[ \t]+\S", re.M)
+
+# Harvey's C-036 asks that the executive summary "specifically highlights
+# at least 5 of the most critical findings". That test is semantic and we
+# could not reproduce it: across 18 memos the judge passed a summary
+# naming four themes and failed one naming five concrete items.
+# Attempting to replicate a fuzzy judge is how C-039 went wrong.
+#
+# So this enforces a STRICTER, mechanical standard that IMPLIES the
+# criterion rather than mirroring it: the executive summary must
+# enumerate at least five findings as a list. Evidence that the
+# implication holds: of the 18 recorded memos, the four whose executive
+# summaries enumerate >=5 items pass C-036 4 times out of 4, while the
+# fourteen that do not are a coin flip (7 pass, 7 fail).
+#
+# A firm's house style is allowed to be more specific than a rubric. What
+# it may not be is unverifiable.
+_MIN_EXEC_SUMMARY_FINDINGS = 5
+
+# The next section heading after the executive summary.
+_SECTION_BOUNDARY = re.compile(
+    r"^[ \t]*(?:"
+    r"#{1,6}[ \t]*\S"                              # markdown heading
+    r"|[IVX]{1,5}\.[ \t]*[A-Z]"                     # "II. RED FLAGS"
+    r"|[A-Z][A-Z0-9 ,&/()'\u2014-]{8,70}$"           # bare CAPS heading
+    r")", re.M)
+
+# Belt and braces: even with no boundary found, never scan past this.
+_EXEC_SUMMARY_MAX_CHARS = 4000
+
 
 @dataclass(frozen=True)
 class EngagementConfig:
@@ -131,6 +167,7 @@ class DraftingFindings:
     # working conduct policy binds totalDataRoomDocuments and
     # reviewedDataRoomDocuments, never the boolean derived from them.
     cleared_section_count: int = 0
+    exec_summary_findings: int = 0
     client_name_count: int = 0
     firm_name_count: int = 0
     matter_reference_count: int = 0
@@ -154,7 +191,12 @@ class DraftingFindings:
         the standard it claims to enforce would be the exact failure this
         project exists to avoid. Kept as an advisory signal only.
         """
-        return self.addressed_ok and self.has_cleared_section
+        return (self.addressed_ok and self.has_cleared_section
+                and self.exec_summary_ok)
+
+    @property
+    def exec_summary_ok(self) -> bool:
+        return self.exec_summary_findings >= _MIN_EXEC_SUMMARY_FINDINGS
 
     def missing(self) -> list[str]:
         """Human-readable list of what fails, for the block message the
@@ -169,6 +211,11 @@ class DraftingFindings:
             out.append("no reference to the engagement or its meeting date")
         if not self.has_cleared_section:
             out.append("no section documenting items reviewed and cleared")
+        if not self.exec_summary_ok:
+            out.append(
+                f"the executive summary enumerates {self.exec_summary_findings} "
+                f"finding(s); at least {_MIN_EXEC_SUMMARY_FINDINGS} must be "
+                f"listed")
         return out
 
 
@@ -225,6 +272,48 @@ def split_red_flags(text: str) -> list[tuple[str, str]]:
     return out
 
 
+def exec_summary_findings(text: str) -> int:
+    """Count enumerated findings inside the executive summary section."""
+    m = _EXEC_SUMMARY_HEADING.search(text)
+    if not m:
+        return 0
+    body = text[m.end():]
+    # End the section at the next heading. Memos vary: some use roman
+    # numerals ("II. RED FLAGS BY CATEGORY"), some markdown, some a bare
+    # capitalised line. Missing the boundary is not a small error — it
+    # counted enumerated items through the whole document and reported 27
+    # findings for a summary containing 6.
+    end = _SECTION_BOUNDARY.search(body)
+    if end:
+        body = body[:end.start()]
+    body = body[:_EXEC_SUMMARY_MAX_CHARS]
+    # Longest CONTIGUOUS run of enumerated lines, not the total across the
+    # section. runA's summary says "the three most critical issues are"
+    # and lists three; summing separate lists reached five and would have
+    # passed a memo the judge failed. The standard is "a list of at least
+    # five findings", so a list is what gets measured.
+    # A numbered list runs 1,2,3,... A section that restarts at 1 is a new
+    # list, not a continuation: without this, the executive summary's three
+    # items ran straight into the next section's "1." and counted four.
+    best = run = 0
+    prev_num = None
+    for line in body.splitlines():
+        m = _ENUMERATED_ITEM.match(line)
+        if m:
+            num = re.match(r"^[ \t]*\(?(\d+)[.)]", line)
+            if num:
+                n = int(num.group(1))
+                run = run + 1 if (prev_num is not None and n == prev_num + 1) else 1
+                prev_num = n
+            else:                    # bullets: contiguity is enough
+                run += 1
+                prev_num = None
+            best = max(best, run)
+        elif line.strip():           # prose breaks the list
+            run, prev_num = 0, None
+    return best
+
+
 def _cleared_section_count(text: str) -> int:
     """How many cleared-items sections the document contains (with
     substance, not a bare heading)."""
@@ -279,6 +368,7 @@ def check_draft(text: str, config: EngagementConfig,
         red_flag_count=len(flags),
         uncited_red_flags=uncited,
         cleared_section_count=cleared_n,
+        exec_summary_findings=exec_summary_findings(text),
         client_name_count=sum(1 for n in config.client_names
                               if _norm(n) in head),
         firm_name_count=sum(1 for n in config.firm_names

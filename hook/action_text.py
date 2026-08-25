@@ -90,6 +90,13 @@ def deliverable_action(file_path: str, f: DraftingFindings) -> ActionFacts:
             f"that number is zero, the memorandum does not reference the "
             f"engagement matter. " + tail), **common)
 
+    if not f.exec_summary_ok:
+        return ActionFacts(text=(
+            head + f"The number of findings listed in the memorandum's "
+            f"executive summary is {_n(f.exec_summary_findings)}. Because "
+            f"that number is fewer than five, the executive summary does "
+            f"not list at least five findings. " + tail), **common)
+
     if f.cleared_section_count == 0:
         return ActionFacts(text=(
             head + f"The number of cleared-items sections the memorandum "
@@ -109,7 +116,11 @@ def deliverable_action(file_path: str, f: DraftingFindings) -> ActionFacts:
           f"memorandum is {_n(f.matter_reference_count)}. "
         + f"The number of cleared-items sections the memorandum contains "
           f"is {_n(f.cleared_section_count)}. "
-        + f"Each of these numbers is greater than zero. " + tail), **common)
+        + f"The number of findings listed in the memorandum's executive "
+          f"summary is {_n(f.exec_summary_findings)}. "
+        + f"Each of the first four numbers is greater than zero and the "
+          f"executive summary lists at least five findings. " + tail),
+        **common)
 
 
 def block_message(f: DraftingFindings) -> str:
