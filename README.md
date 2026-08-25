@@ -1,10 +1,156 @@
 # harvey-lab-drafting — closing the gap a better prompt cannot close
 
-One rule, enforced on the finished document, on a stock task from
-Harvey's open-source Legal Agent Benchmark (LAB). LAB is unmodified. Not
+A firm rule, enforced automatically on an AI agent's work product, with a
+receipt for every decision. Built on a stock task from Harvey's
+open-source Legal Agent Benchmark (LAB). LAB is unmodified. Not
 affiliated with or endorsed by Harvey.
 
 Current state, results, and known limits: **[STATUS.md](STATUS.md)**.
+
+## In plain English
+
+Harvey's benchmark hands an AI agent a folder of deal documents and asks
+it to write a memo listing the problems it found.
+
+One of the things Harvey grades is whether the agent **avoids** raising a
+non-issue. There is a Wyoming permit in the data room that looks expired,
+but the renewal was filed on time, so it is not a problem. A memo that
+writes it up as a red flag — rates it MEDIUM, recommends a closing
+condition — is a junior lawyer crying wolf to a partner about a matter
+the partner already settled.
+
+**Agents get this wrong in 23 of 28 recorded memos.** Roughly 8 times
+out of 10.
+
+So this project puts a gate in front of the agent. Every time it tries to
+produce the memo, our code reads the finished document and checks whether
+that settled matter is being written up as a problem. If it is, the file
+is deleted and the agent is told which matter it raised. Every decision —
+allowed or refused — is checked by a solver and recorded with a receipt.
+
+In the reference run the agent was refused four times before it produced
+a memo that met the standard. Harvey's own grader then confirmed the
+result independently.
+
+### Why not just tell the agent in the prompt?
+
+Because this kind of rule is not the kind a prompt closes.
+
+A rule that says *include a summary* is finished by one deliberate act,
+and the agent can see whether it did it. A rule that says *never raise
+this matter* has no such moment. It has to hold across every red flag in
+the memo, it pulls directly against the task's own instruction to find
+red flags, and one slip is a failure.
+
+The reference run shows it plainly: the agent fixed the memo, and then
+**raised the same settled matter again later in the run** and had to be
+blocked twice more. A one-time correction did not stick. A check that
+runs on every attempt did.
+
+## How it works, step by step
+
+1. **The rule is written in English** in `policy/controls.md` and
+   compiled once by Preflight into formal logic. The compiled policy has
+   a variable for the number of already-cleared matters the memo raises,
+   and a rule refusing the write when that number exceeds zero.
+2. **The agent works normally** inside LAB's sandbox. Nothing in
+   `harvey-labs` is modified; the guard is passed in through a seam LAB
+   already exposes.
+3. **After every tool call**, the guard checks whether the deliverable
+   changed. If it did not, nothing happens.
+4. **If it changed**, the guard reads the actual `.docx` through LAB's
+   own parser, counts the cleared matters raised as red flags, and states
+   that count as a plain fact.
+5. **Preflight's solver rules on that fact.** Zero cleared matters →
+   allowed. One or more → refused.
+6. **On a refusal the file is removed**, and the agent is told which
+   matter it raised — never how the check works, which would teach it to
+   rename rather than fix.
+7. **The run ends by reading what is on disk** and printing one of
+   `DELIVERED`, `REFUSED`, or `ESCAPED`. `ESCAPED` means something
+   non-conforming survived and the guarantee failed.
+
+The receipt for every check lands in `runs/<id>/ledger.md`.
+
+## Run it yourself
+
+Needs a checkout of [harvey-labs](https://github.com/harveyai/harvey-labs),
+an Anthropic key for the agent, and an ICME key for the checks.
+`policy/policy.json` already holds a compiled policy id, so there is no
+need to spend the 300 credits recompiling.
+
+```bash
+export ANTHROPIC_API_KEY=...      # the agent
+export PREFLIGHT_API_KEY=...      # the checks
+
+PYTHONPATH=. uv run --project ../harvey-labs python -m hook.runner \
+    --lab-root ../harvey-labs \
+    --model anthropic/claude-haiku-4-5 \
+    --task corporate-ma/review-data-room-red-flag-review \
+    --policy-id "$(python3 -c "import json;print(json.load(open('policy/policy.json'))['policy_id'])")" \
+    --run-id myrun --no-briefing
+```
+
+The run ends by printing `DELIVERED`, `REFUSED` or `ESCAPED` and writing
+`runs/myrun/final_state.json`. `runs/myrun/ledger.md` is the receipt for
+every check.
+
+Flags worth knowing:
+
+* `--no-briefing` — do not state the standard in the system prompt. Use
+  this when testing enforcement; a briefed agent mostly complies and the
+  gate never fires.
+* `--bare-blocks` — refuse without saying why. A test of whether
+  enforcement holds when the agent is told nothing, not a deployment
+  mode: measured, the agent does not recover from it (see STATUS).
+
+A run costs roughly \$1 on `claude-haiku-4-5` and \$9 on
+`claude-sonnet-4-6`; almost all of it is LAB re-sending the document set
+each turn.
+
+### Look at a recorded run instead — no keys, no cost
+
+Five runs are committed under `runs/`. The reference one is `runR_r1`:
+
+```bash
+cat runs/runR_r1/final_state.json        # the verdict
+grep verify: runs/runR_r1/ledger.md      # every check that ruled
+```
+
+Each row carries a `check_id` and a proof id, so a decision can be
+re-verified against Preflight later:
+
+```
+| 22 | verify: red-flag-memo.docx | 🛑 UNSAT | fe131e55-… | 5874 | fd03d727-… |
+| 27 | verify: red-flag-memo.docx | ✅ SAT   | 6aa199b2-… | 5202 | 18c192a4-… |
+```
+
+Its ledger shows four refusals and two passes. The interesting part is
+the order — refused, refused, passed, **refused, refused**, passed. The
+agent fixed the memo and then raised the settled matter again later in
+the same run.
+
+To read the delivered memo the way the check reads it:
+
+```bash
+pandoc runs/runR_r1/output/red-flag-memo.docx -t markdown --wrap=none -o /tmp/m.md
+PYTHONPATH=. python3 -c "
+import json; from hook.drafting import EngagementConfig, flagged_cleared_items
+c = EngagementConfig.from_dict(json.load(open('policy/engagement.json')))
+print(flagged_cleared_items(open('/tmp/m.md').read(), c.cleared_items))"
+```
+
+An empty list means no cleared matter was raised as a red flag. Anything
+printed is a violation. Do not use a hand-rolled XML reader on the
+`.docx` — Word keeps structure the plain text does not show, and it will
+mislead you.
+
+### Run the checks CI runs
+
+```bash
+python3 -m unittest discover -s tests -v          # 80 tests, no network
+uv run --with pyflakes python -m pyflakes hook tests scripts
+```
 
 ## The claim
 
@@ -285,46 +431,3 @@ print(flagged_cleared_items(open('/tmp/m.md').read(), c.cleared_items))"
     tests/                   80 offline tests, no network or API key
                              (also run in CI: .github/workflows/tests.yml)
 
-## Run the tests
-
-No network, no API key, no credits:
-
-```bash
-python3 -m unittest discover -s tests -v
-```
-
-## Run it yourself
-
-Needs a checkout of [harvey-labs](https://github.com/harveyai/harvey-labs),
-an Anthropic key for the agent, and an ICME key for the checks.
-`policy/policy.json` already holds a compiled policy id, so there is no
-need to spend the 300 credits recompiling.
-
-```bash
-export ANTHROPIC_API_KEY=...      # the agent
-export PREFLIGHT_API_KEY=...      # the checks
-
-PYTHONPATH=. uv run --project ../harvey-labs python -m hook.runner \
-    --lab-root ../harvey-labs \
-    --model anthropic/claude-haiku-4-5 \
-    --task corporate-ma/review-data-room-red-flag-review \
-    --policy-id "$(python3 -c "import json;print(json.load(open('policy/policy.json'))['policy_id'])")" \
-    --run-id myrun --no-briefing
-```
-
-The run ends by printing `DELIVERED`, `REFUSED` or `ESCAPED` and writing
-`runs/myrun/final_state.json`. `runs/myrun/ledger.md` is the receipt for
-every check.
-
-Flags worth knowing:
-
-* `--no-briefing` — do not state the standard in the system prompt. Use
-  this when testing enforcement; a briefed agent mostly complies and the
-  gate never fires.
-* `--bare-blocks` — refuse without saying why. A test of whether
-  enforcement holds when the agent is told nothing, not a deployment
-  mode: measured, the agent does not recover from it (see STATUS).
-
-A run costs roughly \$1 on `claude-haiku-4-5` and \$9 on
-`claude-sonnet-4-6`; almost all of it is LAB re-sending the document set
-each turn.
