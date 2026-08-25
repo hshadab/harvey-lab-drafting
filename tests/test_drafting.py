@@ -386,3 +386,42 @@ PRINCIPAL FINDINGS:
                 + "\n# Detail\n")
         self.assertEqual(exec_summary_findings(text), 0,
                          "naming a group is not describing a finding")
+
+
+class TestSummaryCapIsParserIndependent(unittest.TestCase):
+    """The cap must measure the document, not the parser's wrapping.
+
+    runJ_r2's executive summary is 4712 characters under
+    `pandoc --wrap=none` and 4864 under `--columns=72`. A cap applied to
+    the raw text cut in a different place and dropped the twelfth
+    finding: 12 under one parser, 11 under the other. The verdict
+    survived here (both exceed five) but a memo sitting exactly at the
+    threshold would flip on a parser flag.
+    """
+
+    def _summary(self, n, wrapped):
+        lines = ["# EXECUTIVE SUMMARY", ""]
+        for i in range(1, n + 1):
+            body = (f"Finding {i} describing a specific diligence issue "
+                    f"at enough length to be a finding and not a label, "
+                    f"with figures and a document reference attached.")
+            if wrapped:
+                head, tail = body[:60], body[60:]
+                lines += [f"{i}. {head}", f"    {tail}"]
+            else:
+                lines.append(f"{i}. {body}")
+        lines += ["", "# DETAILED FINDINGS", ""]
+        return "\n".join(lines)
+
+    def test_long_summary_counts_the_same_either_way(self):
+        for n in (8, 12, 20):
+            with self.subTest(items=n):
+                self.assertEqual(
+                    exec_summary_findings(self._summary(n, False)),
+                    exec_summary_findings(self._summary(n, True)),
+                    "the cap must not depend on how lines were wrapped")
+
+    def test_cap_still_bounds_a_runaway_count(self):
+        """The cap exists for a missed section boundary. Keep it working."""
+        huge = self._summary(400, False)
+        self.assertLess(exec_summary_findings(huge), 400)

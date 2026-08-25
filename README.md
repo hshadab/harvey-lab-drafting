@@ -81,18 +81,18 @@ grader is how an earlier attempt at C-039 went wrong.
 So the rule is deliberately **stricter and mechanical**: the executive
 summary must **enumerate and describe** at least five findings.
 
-Measured across all 26 scored memos:
+Measured across all 28 scored memos:
 
 | | judge passes C-036 | judge fails C-036 |
 |---|---|---|
-| **guard passes** (5+ described) | 9 | **0** |
-| **guard blocks** (fewer) | 7 | 10 |
+| **guard passes** (5+ described) | 12 | **0** |
+| **guard blocks** (fewer) | 6 | 10 |
 
 The top-right cell is the one that matters. A memo the guard passes and
 the judge fails means the mechanical rule does not imply the criterion,
 and the whole design rests on it doing so. It is zero.
 
-The bottom-left cell — seven memos the judge accepted and this rule would
+The bottom-left cell — six memos the judge accepted and this rule would
 block — is **by design, not error**. The judge accepts a prose summary;
 a house style need not. What a house style may not do is pass work the
 rubric fails.

@@ -326,7 +326,14 @@ def exec_summary_findings(text: str) -> int:
     end = _SECTION_BOUNDARY.search(body)
     if end:
         body = body[:end.start()]
-    body = body[:_EXEC_SUMMARY_MAX_CHARS]
+    # The cap is applied AFTER coalescing, not to the raw text. Raw
+    # length depends on how the parser wrapped the lines: runJ_r2's
+    # summary is 4712 characters under `--wrap=none` and 4864 under
+    # `--columns=72`, so a raw cap fell in a different place and dropped
+    # the twelfth finding -- 12 under one parser, 11 under the other. The
+    # verdict happened to survive (both exceed five), but a memo sitting
+    # exactly at the threshold would flip on a parser flag. The count
+    # must describe the document.
     # Longest CONTIGUOUS run of consecutively NUMBERED lines, not the
     # total across the
     # section. runA's summary says "the three most critical issues are"
@@ -352,6 +359,18 @@ def exec_summary_findings(text: str) -> int:
                 items[-1] = (n, f"{text} {line.strip()}")
             else:
                 items.append(None)   # prose at the margin ends the list
+
+    # Safety net for a missed section boundary, measured on the
+    # coalesced text so it does not depend on the parser's wrapping.
+    budget = _EXEC_SUMMARY_MAX_CHARS
+    capped: list[tuple[int | None, str] | None] = []
+    for item in items:
+        text = "" if item is None else item[1]
+        budget -= len(text)
+        if budget < 0:
+            break
+        capped.append(item)
+    items = capped
 
     best = run = 0
     prev_num = None

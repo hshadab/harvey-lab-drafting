@@ -1,0 +1,32 @@
+{
+  "turn_count": 35,
+  "input_tokens": 4298261,
+  "output_tokens": 27939,
+  "wall_clock_seconds": 830.45,
+  "finished_cleanly": true,
+  "documents_read": 13,
+  "documents_read_list": [
+    "confidential-information-memorandum.docx",
+    "qoe-data-request-response.xlsx",
+    "litigation-regulatory-summary.docx",
+    "real-property-lease-schedule.docx",
+    "phase-ii-esa-executive-summary.docx",
+    "credit-agreement-summary.docx",
+    "executed-loi.docx",
+    "employment-agreements-summary.docx",
+    "customer-contract-summary.xlsx",
+    "insurance-program-summary.docx",
+    "environmental-permit-schedule.docx",
+    "org-chart-equity-structure.docx",
+    "employee-benefits-summary.docx"
+  ],
+  "documents_skipped": 0,
+  "documents_skipped_list": [],
+  "total_documents": 13,
+  "bash_commands": 23,
+  "files_written": 2,
+  "files_edited": 1,
+  "glob_searches": 1,
+  "grep_searches": 0,
+  "completed_at": "2026-08-25T14:49:38.912164+00:00"
+}

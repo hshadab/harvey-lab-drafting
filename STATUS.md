@@ -20,6 +20,8 @@ Every run under the current architecture:
 | `runI_r2` | haiku-4-5 | no | 3 | `REFUSED` | — | not scored |
 | `runI_r3` | haiku-4-5 | no | 2 | `REFUSED` | — | not scored |
 | `runI_r4` | haiku-4-5 | no | 3 | `DELIVERED` | 5 (bulleted) | pass |
+| `runJ_r1` | haiku-4-5 | no | 0 | `DELIVERED` | 5 | pass |
+| `runJ_r2` | sonnet-4-6 | no | 3 | `DELIVERED` | 12 | pass |
 
 **13 blocks, 4 conforming deliveries, 2 refusals, 0 escapes.**
 
@@ -60,14 +62,14 @@ the scored memos.
 
 `runI_r1` now counts 3 and is blocked; `runI_r4` counts 5 and passes.
 
-Re-measured across all 26 scored memos:
+Re-measured across all 28 scored memos:
 
 | | judge passes C-036 | judge fails C-036 |
 |---|---|---|
-| **guard passes** (5+ described) | 9 | **0** |
-| **guard blocks** (fewer) | 7 | 10 |
+| **guard passes** (5+ described) | 12 | **0** |
+| **guard blocks** (fewer) | 6 | 10 |
 
-Seven memos the judge accepted would be blocked by this rule. That is
+Six memos the judge accepted would be blocked by this rule. That is
 by design — the judge accepts a prose summary and a house style need
 not. What a house style may not do is pass work the rubric fails, and
 that column is now zero.
@@ -85,6 +87,33 @@ counted 15, independently, on the same document.
 The overall scores read FAIL because LAB gates on all 50 criteria. That
 number does not measure this system, which makes one claim about one
 criterion.
+
+## Live runs on the corrected rule (`runJ`)
+
+`runJ_r1` (haiku) delivered with no blocks; `runJ_r2` (sonnet) is the
+block-and-repair cycle end to end — three blocks, the agent revised,
+three passes, then `DELIVERED` with 12 findings. LAB's judge passed
+C-036 on both.
+
+Two things this exposed, both narrowing what the rule can be claimed to
+do:
+
+**Described categories are not excluded.** `runJ_r1`'s summary bullets
+four severity bands — "CRITICAL (4 flags): Issues requiring immediate
+resolution…" — each 55–96 characters, all above the length threshold.
+They are categories, the same shape that broke the rule in `runI_r1`,
+but they carry a sentence of description so length does not exclude
+them. The count came out right only because the bands form a run of
+**four** and `Key findings:` at the margin breaks the run. Five severity
+bands would have passed on categories again. Length separates *bare*
+category labels from findings; it does not separate *described* ones.
+
+**A character cap made the count depend on the parser.** The executive
+summary was truncated at 4000 raw characters, and `runJ_r2`'s summary is
+4712 characters under `--wrap=none` and 4864 under `--columns=72`, so
+the cut landed in a different place: 12 findings under one parser, 11
+under the other. The cap now applies after coalescing, so it measures
+the document rather than the wrapping.
 
 ## What the configurations are for
 
@@ -141,8 +170,17 @@ suite.
   killed. Do not read a missing verdict as a clean refusal.
 * The rule separates a finding from a category by length (50 characters
   of description). A memo listing five genuine findings more tersely
-  than that would be blocked. No memo in the 26 scored does this, so the
+  than that would be blocked. No memo in the 28 scored does this, so the
   risk is unmeasured rather than ruled out.
+* **A category with a sentence of description counts as a finding.** See
+  the `runJ_r1` note above. Five described categories would pass.
+* The count is stable under the parser enforcement actually uses — LAB
+  parses `.docx` with `pandoc --wrap=none` — but not under every parser.
+  `runJ_r1` counts 5 under `--wrap=none` and 1 under `--columns=72`,
+  because that mode wraps list continuations to the margin with no
+  indent and the scan reads them as prose ending the list. An earlier
+  commit message claimed identical verdicts under both modes on every
+  memo; that claim was wrong.
 * `/v1/me` returns 403 on both auth headers, so the ICME credit balance
   cannot be read from here. Runs themselves work, so the key is valid.
 * Most of the bugs above were found by running or probing the system,
