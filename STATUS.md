@@ -1,5 +1,9 @@
 # Status
 
+Measured results and current limits. For what this is and how to run it
+see [README.md](README.md); for how the guard works see
+[DESIGN.md](DESIGN.md).
+
 Current state of the demo. Updated as runs land.
 
 ## Is it working?
