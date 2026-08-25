@@ -1,7 +1,7 @@
 {
-  "model": "anthropic/claude-sonnet-4-6",
+  "model": "anthropic/claude-haiku-4-5",
   "task": "corporate-ma/review-data-room-red-flag-review",
-  "run_id": "runE_r2",
+  "run_id": "runI_r2",
   "policy_id": "c551a026-550e-4ced-be2d-a41143bc098b",
   "engagement": "/home/hshadab/harvey-lab-drafting/policy/engagement.json",
   "max_turns": 200,
@@ -11,5 +11,5 @@
     "pptx",
     "xlsx"
   ],
-  "started_at": "2026-08-25T09:45:49.032450+00:00"
+  "started_at": "2026-08-25T13:28:50.257326+00:00"
 }

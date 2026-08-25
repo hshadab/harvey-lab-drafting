@@ -15,9 +15,10 @@ modified.
 | `runG_r1` | no | 5 | 1 | conforming, 5 findings | pass | 38/50 |
 | `runH_r1` | yes | 0 | 1 | `DELIVERED`, 15 findings | pass | 35/50 |
 
-C-036 has now passed in every run where the guard passed the memo as
-conforming — `runD_r2`, `runE_r1`, `runG_r1`, `runH_r1`. The historical
-unenforced rate is 11 of 18.
+C-036 has passed in every run where the guard passed the memo as
+conforming — four so far, against a historical unenforced rate of 11 of
+18. Only runs under the current architecture are kept in `runs/`; scores
+for the superseded ones remain in `harvey-labs/results/`.
 
 In `runH_r1` the LAB judge counted 15 findings and this repo's checker
 counted 15, independently, on the same document.

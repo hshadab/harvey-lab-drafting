@@ -5,8 +5,7 @@
 
      ONE RULE, deliberately. Earlier versions enforced four more
      (addressing, issuing firm, matter reference, cleared-items section).
-     They worked, and policy/*-v2-4rules.json and *-v3-5rules.json keep
-     them, but they answer a different question.
+     They worked, but they answer a different question.
 
      This rule is the product positioning: the model gets it right MOST
      of the time. LAB's own C-036 passes 11 of 18 recorded runs. That is
