@@ -44,11 +44,6 @@ def parse_args():
                    default="corporate-ma/review-data-room-red-flag-review")
     p.add_argument("--policy-id",
                    default=os.environ.get("PREFLIGHT_POLICY_ID"))
-    p.add_argument("--tracker-policy-id",
-                   default=os.environ.get("PREFLIGHT_TRACKER_POLICY_ID"),
-                   help="policy holding the tracker column rule (C-043). "
-                        "Separate from the memorandum policy on purpose "
-                        "-- see GuardConfig.tracker_policy_id.")
     p.add_argument("--engagement",
                    default=str(REPO_ROOT / "policy" / "engagement.json"))
     p.add_argument("--run-id", default=None)
@@ -192,12 +187,8 @@ def main():
         engagement=engagement,
         ledger_path=str(results_dir / "ledger.jsonl"),
         explain_blocks=not args.bare_blocks,
-        tracker_policy_id=args.tracker_policy_id,
     ))
-    tracker_note = (args.tracker_policy_id
-                    or "NONE - tracker ungoverned")
-    print(f"Drafting guard up: memo policy {args.policy_id}, "
-          f"tracker policy {tracker_note}, "
+    print(f"Drafting guard up: policy {args.policy_id}, "
           f"governs {guard.config.governed_deliverable} "
           f"(of {deliverables}), "
           f"client={engagement.client_names[:1]} firm={engagement.firm_names[:1]}")
@@ -217,7 +208,6 @@ def main():
     (results_dir / "config.json").write_text(json.dumps({
         "model": args.model, "task": args.task, "run_id": args.run_id,
         "policy_id": args.policy_id,
-        "tracker_policy_id": args.tracker_policy_id,
         "engagement": args.engagement,
         "max_turns": args.max_turns, "temperature": args.temperature,
         "skills": skill_names,

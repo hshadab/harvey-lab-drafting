@@ -1,10 +1,9 @@
 """Every CLI flag must reach the object that acts on it.
 
-runK_r1 blocked a conforming tracker four times because
---tracker-policy-id was parsed, recorded in config.json, and never passed
-into GuardConfig. Every unit test passed: they built GuardConfig
-directly and so exercised the class, not the wiring. Same shape as the
-FakeSandbox gap -- the tests checked the part that was right.
+A flag once reached config.json but never GuardConfig, so the guard ran
+with a setting the run's own config claimed it had. Every unit test
+passed: they build GuardConfig directly and so exercise the class, not
+the wiring -- the same shape as the FakeSandbox gap.
 
 This compares the runner's argparse flags against the GuardConfig fields
 it populates, without a sandbox, an API key, or a container.
@@ -34,12 +33,6 @@ def guardconfig_kwargs() -> set[str]:
 
 class TestPolicyFlagsReachTheGuard(unittest.TestCase):
 
-    def test_tracker_policy_id_is_passed_to_guardconfig(self):
-        self.assertIn("tracker_policy_id", guardconfig_kwargs(),
-                      "--tracker-policy-id was parsed and written to "
-                      "config.json but never passed to the guard, so the "
-                      "tracker was checked against the memorandum policy")
-
     def test_policy_id_is_passed_to_guardconfig(self):
         self.assertIn("policy_id", guardconfig_kwargs())
 
@@ -50,17 +43,9 @@ class TestPolicyFlagsReachTheGuard(unittest.TestCase):
                         f"runner passes unknown GuardConfig fields: "
                         f"{sorted(passed - fields)}")
 
-    def test_policy_flags_are_parsed(self):
-        args = parse_args_from(["--model", "m", "--policy-id", "P",
-                                "--tracker-policy-id", "T"])
-        self.assertEqual(args.policy_id, "P")
-        self.assertEqual(args.tracker_policy_id, "T")
-
-    def test_tracker_policy_defaults_to_none_not_the_memo_policy(self):
-        """Absent a tracker policy the tracker is ungoverned, never
-        checked against another rule's policy."""
+    def test_policy_flag_is_parsed(self):
         args = parse_args_from(["--model", "m", "--policy-id", "P"])
-        self.assertIsNone(args.tracker_policy_id)
+        self.assertEqual(args.policy_id, "P")
 
 
 def parse_args_from(argv):

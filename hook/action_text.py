@@ -24,7 +24,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from hook.drafting import DraftingFindings
-from hook.tracker import MAX_MISSING_COLUMNS, TrackerFindings
 
 
 @dataclass
@@ -34,7 +33,6 @@ class ActionFacts:
     text: str
     is_deliverable: bool = False
     findings: DraftingFindings | None = None
-    tracker: TrackerFindings | None = None
 
 
 def _n(v: int) -> str:
@@ -71,51 +69,6 @@ def deliverable_action(file_path: str, f: DraftingFindings) -> ActionFacts:
         f"executive summary is {n}. Because {n} is at least five, the "
         f"executive summary lists at least five findings. " + tail),
         **common)
-
-
-def tracker_action(file_path: str, t: TrackerFindings) -> ActionFacts:
-    """Action string for writing the final deliverable tracker (C-043).
-
-    Same shape as the memorandum action and for the same reason: an
-    actor, a verb, an object and a standalone number. The number here is
-    the criterion's own -- how many required columns are missing -- and
-    the threshold is the criterion's own too.
-    """
-    common = dict(tool="write", summary=f"write: {file_path}",
-                  is_deliverable=True, tracker=t)
-    head = (f"The agent writes the final deliverable red flag tracker "
-            f"{file_path} of the diligence review. This action is writing "
-            f"a final deliverable red flag tracker. ")
-    tail = ("Therefore writing this final deliverable red flag tracker is "
-            "permitted.")
-
-    n = t.missing_count
-    if not t.columns_ok:
-        return ActionFacts(text=(
-            head + f"The number of required columns missing from the "
-            f"tracker is {n}. Because {n} is more than "
-            f"{MAX_MISSING_COLUMNS}, the tracker is missing more than "
-            f"{MAX_MISSING_COLUMNS} required columns. " + tail), **common)
-
-    return ActionFacts(text=(
-        head + f"The number of required columns missing from the tracker "
-        f"is {n}. Because {n} is not more than {MAX_MISSING_COLUMNS}, the "
-        f"tracker is not missing more than {MAX_MISSING_COLUMNS} required "
-        f"columns. " + tail), **common)
-
-
-def tracker_block_message(t: TrackerFindings, explain: bool = True) -> str:
-    """What the agent is told when a tracker is refused."""
-    head = ("Blocked by firm drafting standard: this red flag tracker "
-            "does not meet the issuing standard.")
-    if not explain:
-        return head
-    return (f"{head}\n  - the tracker is missing {t.missing_count} "
-            f"required column(s): {t.describe_missing()}\n"
-            f"  - at most {MAX_MISSING_COLUMNS} may be missing\n"
-            f"Add the missing column(s) and produce the tracker again. "
-            f"The content of your analysis is not in question \u2014 only "
-            f"that the tracker meets the firm's issuing standard.")
 
 
 def block_message(f: DraftingFindings, explain: bool = True) -> str:

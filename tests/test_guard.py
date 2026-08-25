@@ -45,16 +45,6 @@ FIVE = ("EXECUTIVE SUMMARY\n\nThe most significant concerns are:\n"
 THREE = ("EXECUTIVE SUMMARY\n\nThe three most critical issues are:\n"
          + "".join(f"{i}. {t}\n" for i, t in enumerate(_ITEMS[:3], 1)) + "\n")
 
-# A tracker whose header row carries all eight C-043 columns. LAB parses
-# .xlsx with pandas `to_string`, so the guard sees the sheet as text.
-GOOD_TRACKER = ("=== Sheet: Red Flag Tracker ===\n"
-                "PROJECT RIDGELINE - DUE DILIGENCE RED FLAG TRACKER\n"
-                "ID  Category  Red Flag Description  Severity  "
-                "Financial Exposure  Source Document(s)  "
-                "Recommended Action  Status\n"
-                "RF-01  Financial  EBITDA discrepancy  HIGH  $1.0M  "
-                "CIM  Reconcile  Open\n").encode()
-
 COMPLIANT = "MEMORANDUM\n\n" + FIVE + "1. Permit issue\n" + "detail. " * 200
 SHORT = "MEMORANDUM\n\n" + THREE + "1. Permit issue\n" + "detail. " * 200
 
@@ -142,14 +132,12 @@ class FakeClient:
                 "verification_time_ms": 5}
 
 
-def make_guard(client, tmp, writes=None, explain_blocks=True,
-               tracker_policy_id=None):
+def make_guard(client, tmp, writes=None, explain_blocks=True):
     inner = FakeInner(writes)
     g = DraftingGuard(inner, client, GuardConfig(
         policy_id="pol-1", documents_dir=str(tmp),
         engagement=CONFIG, ledger_path=str(Path(tmp) / "ledger.jsonl"),
-        max_retries=1, retry_wait_s=0, explain_blocks=explain_blocks,
-        tracker_policy_id=tracker_policy_id))
+        max_retries=1, retry_wait_s=0, explain_blocks=explain_blocks))
     return g, inner
 
 
@@ -264,34 +252,29 @@ class TestRuleScope(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
 
-    def test_the_tracker_is_never_judged_by_the_memo_standard(self):
-        """runF_r1 applied the executive-summary rule to the spreadsheet
-        and reverted it four times. The tracker is governed now -- by
-        C-043, its own rule -- but never by the memorandum's."""
-        tracker = "/workspace/output/red-flag-tracker.xlsx"
-        c = FakeClient("SAT")
-        g, inner = make_guard(c, self.tmp,
-                              writes={"bash": {tracker: GOOD_TRACKER}},
-                              tracker_policy_id="tracker-policy")
-        bash(g, "python build_tracker.py")
-        self.assertEqual(len(c.actions), 1)
-        said = c.actions[0]
-        self.assertIn("red flag tracker", said)
-        self.assertIn("required columns missing", said)
-        self.assertNotIn("executive summary", said,
-                         "a spreadsheet has no executive summary; the "
-                         "memo rule must never be asked about it")
-        self.assertIn(tracker, inner.sandbox.files)
+    def test_the_tracker_is_not_governed(self):
+        """A rule about memoranda has nothing to say about a spreadsheet.
 
-    def test_a_conforming_tracker_survives(self):
+        runF_r1 applied the executive-summary rule to
+        red-flag-tracker.xlsx and reverted the tracker four times. LAB's
+        C-036 is scoped to red-flag-memo.docx; so is this.
+        """
         tracker = "/workspace/output/red-flag-tracker.xlsx"
-        c = FakeClient("SAT")
+        c = FakeClient("UNSAT")
         g, inner = make_guard(c, self.tmp,
-                              writes={"bash": {tracker: GOOD_TRACKER}},
-                              tracker_policy_id="tracker-policy")
+                              writes={"bash": {tracker: b"PK\x03\x04xlsx"}})
         out = bash(g, "python build_tracker.py")
+        self.assertEqual(c.actions, [], "the tracker must not be checked")
         self.assertEqual(out, "OK: executed")
-        self.assertIn(tracker, inner.sandbox.files)
+        self.assertIn(tracker, inner.sandbox.files,
+                      "an ungoverned tracker must survive")
+
+    def test_writing_the_tracker_directly_is_not_governed(self):
+        c = FakeClient("UNSAT")
+        g, inner = make_guard(c, self.tmp)
+        write(g, "red-flag-tracker.xlsx", "rows " * 400)
+        self.assertEqual(c.actions, [])
+        self.assertEqual(len(inner.calls), 1)
 
 
 class TestArtifactVerification(unittest.TestCase):
@@ -760,86 +743,3 @@ class TestVerdictIsAlwaysRecorded(unittest.TestCase):
         with self.assertRaises(KeyError):
             runner.write_verdict(Path(tempfile.mkdtemp()),
                                  {"state": "PROBABLY_FINE", "detail": ""})
-
-
-class RecordingClient(FakeClient):
-    """FakeClient that remembers which policy each check went to."""
-
-    def __init__(self, verdict="SAT"):
-        super().__init__(verdict)
-        self.calls = []
-
-    def check_it(self, policy_id, action):
-        self.calls.append((policy_id, action))
-        return super().check_it(policy_id, action)
-
-
-class TestOnePolicyPerStandard(unittest.TestCase):
-    """A tracker action must never be ruled on by the memorandum policy.
-
-    Compiling both rules into one policy blocked every conforming
-    tracker: the extractor defaults an unmentioned Int to 0, so a tracker
-    action bound numberOfFindingsInExecutiveSummary = 0, the memorandum
-    rule fired, and its conclusion contradicted the action's own
-    "permitted". Each rule now lives in its own policy.
-    """
-
-    def setUp(self):
-        self.tmp = tempfile.mkdtemp()
-        self.memo = "/workspace/output/red-flag-memo.docx"
-        self.tracker = "/workspace/output/red-flag-tracker.xlsx"
-
-    def _guard(self, client, writes):
-        inner = FakeInner(writes)
-        g = DraftingGuard(inner, client, GuardConfig(
-            policy_id="memo-policy", tracker_policy_id="tracker-policy",
-            documents_dir=str(self.tmp), engagement=CONFIG,
-            ledger_path=str(Path(self.tmp) / "ledger.jsonl"),
-            max_retries=1, retry_wait_s=0))
-        return g, inner
-
-    def test_tracker_is_checked_against_the_tracker_policy(self):
-        c = RecordingClient("SAT")
-        g, _ = self._guard(c, {"bash": {self.tracker: GOOD_TRACKER}})
-        bash(g, "python build_tracker.py")
-        self.assertEqual([p for p, _ in c.calls], ["tracker-policy"])
-
-    def test_memo_is_checked_against_the_memo_policy(self):
-        c = RecordingClient("SAT")
-        g, _ = self._guard(c, {"bash": {self.memo: COMPLIANT.encode()}})
-        bash(g, "make memo")
-        self.assertEqual([p for p, _ in c.calls], ["memo-policy"])
-
-    def test_neither_action_mentions_the_others_variable(self):
-        c = RecordingClient("SAT")
-        g, _ = self._guard(c, {"bash": {self.tracker: GOOD_TRACKER}})
-        bash(g, "python build_tracker.py")
-        said = c.calls[0][1].lower()
-        self.assertNotIn("executive summary", said)
-        self.assertNotIn("findings listed", said)
-
-    def test_without_a_tracker_policy_the_tracker_is_not_governed(self):
-        """A rule with no policy is not enforced -- it is never handed to
-        another rule's policy.
-
-        runK_r1 blocked a conforming tracker four times: the runner never
-        passed tracker_policy_id into GuardConfig, and the old
-        `tracker_policy_id or policy_id` fallback quietly checked the
-        tracker against the MEMORANDUM policy, which refuses every
-        tracker. A silent downgrade to the wrong rule is worse than no
-        rule.
-        """
-        c = RecordingClient("UNSAT")
-        inner = FakeInner({"bash": {self.tracker: GOOD_TRACKER}})
-        g = DraftingGuard(inner, c, GuardConfig(
-            policy_id="memo-policy", documents_dir=str(self.tmp),
-            engagement=CONFIG,
-            ledger_path=str(Path(self.tmp) / "ledger.jsonl"),
-            max_retries=1, retry_wait_s=0))
-        out = bash(g, "python build_tracker.py")
-        self.assertEqual(c.calls, [],
-                         "the tracker must not be checked against the "
-                         "memorandum policy")
-        self.assertIn(self.tracker, inner.sandbox.files,
-                      "an ungoverned tracker must survive")
-        self.assertEqual(out, "OK: executed")

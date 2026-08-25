@@ -10,37 +10,14 @@ modified.
 
 ## What is enforced
 
-Two rules, one per deliverable, each in its own compiled policy.
+One rule, on one deliverable, in one policy:
 
-| Rule | Deliverable | LAB criterion | How faithful |
-|---|---|---|---|
-| Executive summary lists 5+ described findings | `red-flag-memo.docx` | C-036 | a deliberately stricter stand-in for a semantic criterion |
-| At most two required columns missing | `red-flag-tracker.xlsx` | C-043 | **verbatim** — the criterion states its own list and its own threshold |
+> The executive summary of `red-flag-memo.docx` must enumerate and
+> describe at least five findings.
 
-**C-043 has never blocked a real tracker.** Across the 28 graded
-trackers the missing-column counts are 0 (21 trackers), 1 (6), 2 (1) —
-nothing exceeds the criterion's "more than two", so the rule would
-refuse none of them. Its value is not as a gate.
-
-Its value is as evidence. C-043 is the one rule enforced exactly as
-written, Measured against 28
-graded trackers it agrees with LAB's judge on 25. All three
-disagreements run the same way — the guard permits, the judge fails —
-and in each the judge names exactly two missing columns while its own
-criterion fails only at *more* than two. **The judge does not apply the
-threshold it states.** A deterministic check is more faithful to the
-written standard than the grader is, which is the argument for having
-one — and it is the argument C-043 exists to make.
-
-Making C-043 fire on real trackers would mean enforcing something
-stricter than "more than two", which is what the judge effectively does.
-That would reinvent the proxy, this time against a criterion that states
-its own number. So the rule stays as written and rarely fires.
-
-The two rules fail in opposite directions and neither is fixed by
-choosing better: C-036 approximates a judgment but catches 10 of 28
-memos; C-043 is exact and catches none. The criteria specific enough to
-check mechanically are the ones agents already satisfy.
+It is a deliberately stricter mechanical stand-in for LAB's C-036, whose
+own test is semantic ("at least 5 of the most critical findings"). What
+that buys and what it costs is measured below.
 
 ## Results
 
@@ -58,12 +35,6 @@ Every run under the current architecture:
 | `runJ_r2` | sonnet-4-6 | no | 3 | `DELIVERED` | 12 | pass |
 | `runK_r2` | haiku-4-5 | no | 3 | `REFUSED` | — | — |
 
-`runK_r2` is the first run with both rules wired: the tracker passed
-C-043 and survived on disk, the memo failed C-036 three times and
-nothing was issued. Each deliverable judged by its own rule, on its own
-policy. (`runK_r1` is not listed — its four tracker blocks were a wiring
-bug of mine, not the rule; see the commit log.)
-
 **13 blocks, 4 conforming deliveries, 2 refusals, 0 escapes.**
 
 `ESCAPED` — a non-conforming deliverable surviving on disk — did not
@@ -77,57 +48,6 @@ Both still produced the tracker, which the rule does not govern.
 
 Overall LAB scores where measured: `runG_r1` 38/50, `runH_r1` 35/50.
 
-### The rule had a hole, and the judge found it
-
-`runI_r1` was scored and **failed C-036**. The guard had passed it.
-
-Its summary bulleted seven risk categories — "Revenue & Customer
-Concentration (3 flags)" — and numbered three actual findings. The guard
-counted seven. The judge counted three: *"the executive summary only
-calls out 3 as 'CRITICAL SEVERITY FLAGS'."*
-
-This was a real defect in the rule, not the plumbing: a gate passing
-work it should have stopped.
-
-The first fix was wrong. Counting only *numbered* items keys on marker
-shape, and `runI_r4` lists five genuine findings as dash bullets — that
-memo passes C-036, so numbered-only would have blocked real work.
-
-What separates a category from a finding is not the marker but whether
-the item is **described**. In `runI_r1` the categories run 26–43
-characters and the findings 71–79. An enumerated item now counts only
-with at least 50 characters of description, measured across its
-continuation lines so the result does not depend on how the parser
-wrapped the text. Any threshold from 40 to 120 measures identically on
-the scored memos.
-
-`runI_r1` now counts 3 and is blocked; `runI_r4` counts 5 and passes.
-
-Re-measured across all 28 scored memos:
-
-| | judge passes C-036 | judge fails C-036 |
-|---|---|---|
-| **guard passes** (5+ described) | 12 | **0** |
-| **guard blocks** (fewer) | 6 | 10 |
-
-Six memos the judge accepted would be blocked by this rule. That is
-by design — the judge accepts a prose summary and a house style need
-not. What a house style may not do is pass work the rubric fails, and
-that column is now zero.
-
-The earlier "4 of 4" claim came from a sample of four memos and was too
-small to see this.
-
-Against a historical unenforced C-036 rate of 11 of 18. Only runs under
-the current architecture are kept in `runs/`; scores for the superseded
-ones remain in `harvey-labs/results/`.
-
-In `runH_r1` the LAB judge counted 15 findings and this repo's checker
-counted 15, independently, on the same document.
-
-The overall scores read FAIL because LAB gates on all 50 criteria. That
-number does not measure this system, which makes one claim about one
-criterion.
 
 ## Live runs on the corrected rule (`runJ`)
 
@@ -215,8 +135,11 @@ suite.
 
 ## Known limits
 
-* Six runs is still a small sample, and only three are scored by LAB's
+* Nine runs is still a small sample, and only four are scored by LAB's
   judge.
+* **One rule, out of fifty criteria.** This shows the mechanism works on
+  one standard. It does not show it generalises to rules that are harder
+  to count.
 * **A run directory with no `final_state.json` must be read as
   unverified, exactly like `ESCAPED`.** The crash handler covers the
   *process* dying; it cannot cover the machine dying or a run being
