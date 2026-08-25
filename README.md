@@ -51,10 +51,17 @@ One rule, in `policy/controls.md`:
 > of findings listed in the memorandum's executive summary is fewer than
 > five.
 
-Before the memo is written, the hook counts the findings listed in its
-executive summary, states that number as a fact, and Preflight's solver
-rules on it. Fewer than five and the write never happens; the agent is
-told what is missing and revises.
+The hook counts the findings listed in the executive summary, states that
+number as a fact, and Preflight's solver rules on it. Fewer than five and
+the memorandum is not kept; the agent is told what is missing and revises.
+
+**Scoped to one deliverable.** The rule governs `red-flag-memo.docx` and
+nothing else. LAB's own C-036 is scoped the same way — its `deliverables`
+field lists that file alone. An earlier version applied the rule to every
+deliverable in the task, including `red-flag-tracker.xlsx`; a spreadsheet
+has no executive summary, so it could never satisfy the rule, and the
+guard reverted a legitimate deliverable four times in one run. A rule
+about memoranda has nothing to say about a spreadsheet.
 
 Everything else this repo can measure — addressing, issuing firm, matter
 reference, cleared-items section, uncited red flags — is computed and
@@ -89,6 +96,14 @@ have made the claim false:
 2. **Lists bleeding across sections.** A blank line let the summary's list
    run into the next section's `1.`, counting four where there were three.
    A numbered list must be **consecutively numbered** to continue.
+3. **The count depended on someone else's pandoc flags.** An indented
+   continuation line read as prose ending the list. LAB parses `.docx`
+   with `pandoc --wrap=none`, which puts each item on one line, so this
+   never fired — the count was right because of a flag in LAB's code, not
+   because the counter was. Under ordinary wrapping the same conforming
+   memo counted three instead of five, which would have blocked work that
+   met the standard. The count now describes the document, not the
+   parser.
 
 ## The guarantee: verify the artifact, not the command
 
@@ -145,6 +160,75 @@ than a compromise.
 The pre-checks below still run. They give the agent feedback while it is
 drafting, which is far cheaper to act on than a rejection after
 conversion — but they are the ergonomics, not the guarantee.
+
+### A revert that fails is louder than a block
+
+`runF_r2` delivered a memorandum the guard had blocked. `_revert` called
+`sandbox.exec(["rm", "-f", path])`, but LAB's `Sandbox.exec` takes a
+command **string**; the call raised `TypeError` and a bare
+`except Exception: pass` swallowed it. The non-compliant `.docx` stayed on
+disk, and the ledger recorded a successful block.
+
+A receipt that says a file was stopped, sitting next to that file, is
+worse than no receipt at all. So:
+
+* `_revert` confirms the filesystem afterwards — `not exists()` after a
+  delete, a byte comparison after a restore — and returns whether the
+  revert actually happened
+* a failed revert records `REVERT-FAILED` in the ledger and tells the
+  agent the file must not be delivered
+* there is no path where enforcement fails quietly
+
+The test suite missed this because `FakeSandbox.exec` accepted a list.
+A fake more permissive than the thing it fakes is not a test; it is a
+second bug. `TestSandboxContract` now pins the fake's signatures to the
+real `Sandbox` via `inspect.signature`.
+
+## Every run ends by saying what is on disk
+
+The deliverable of this system is *a conforming memorandum, or a visible
+refusal with a reason* — never *silently absent*. So a run does not infer
+its outcome from the ledger; it reads the artifact and says one of three
+things:
+
+| verdict | meaning |
+|---|---|
+| `DELIVERED` | a conforming deliverable exists |
+| `REFUSED` | nothing was issued, and the run says so out loud |
+| `ESCAPED` | a non-conforming deliverable survived — **the guarantee failed; do not use this run** |
+
+Written to `final_state.json` and printed as a banner, on every exit path
+including a crash. `runH_r1`'s first attempt died on an Anthropic 400 and
+left a run directory with no verdict at all — the one state the contract
+does not allow. An unreadable deliverable is `ESCAPED`, never a clean
+refusal.
+
+## Blocking is the product; compliance is a bonus
+
+The claim is **not** "the guard makes the agent write better memos". That
+is a statistical claim: it needs many runs, it is model-dependent, and it
+expires at the next model upgrade. The claim is *this artifact was checked
+against the firm's standard and did not leave the sandbox* — per-artifact,
+with a receipt.
+
+This is why a lower LAB score under enforcement is not a defect. A
+refusal that produces nothing scores zero on the memo criteria and is
+still the correct outcome; an associate who cannot meet the standard
+hands the partner nothing, and the partner finds out.
+
+One consequence worth stating: a control that only ever blocks is
+indistinguishable from a broken control. `runF_r2` and `runG_r1` both
+showed the agent reading a block as broken tooling and going off to
+`strace` pandoc. So the standard is now stated in the system prompt
+before work begins, the way a firm briefs an associate rather than
+waiting to reject the draft.
+
+**This changes what the agent knows, never what is enforced.** The guard
+recomputes every fact host-side and Preflight decides independently, so a
+run whose agent ignores the briefing is governed exactly as before.
+`--no-briefing` reproduces the old behaviour. The briefing interpolates
+`_MIN_EXEC_SUMMARY_FINDINGS`, so it cannot drift from the rule it
+describes.
 
 ## Where it intercepts — by destination, not by content
 
@@ -310,6 +394,50 @@ Fixed, and every prior compliance claim re-checked against the judge:
 Only `runE_r2`'s claim was false. The implication behind the rule still
 holds 4/4 across the 18 historical memos.
 
+## runF_r2 (2026-08-25): the guard blocked it, and shipped it anyway
+
+**The worst outcome this project can produce: a ledger that says a file
+was stopped, next to that file.**
+
+Artifact verification worked. `verify: red-flag-memo.docx` came back
+`UNSAT, confirmed by AR`, and the guard called `_revert`. The revert
+raised `TypeError` — `Sandbox.exec` takes a command string, not a list —
+and `except Exception: pass` swallowed it. The memorandum shipped with an
+executive summary listing zero enumerated findings.
+
+Three of my own habits produced this, and all three are now closed:
+
+* a bare `except: pass` on the one operation that *is* the enforcement
+* a fake that accepted an API the real class does not have, so 46 tests
+  passed against a method signature that did not exist
+* trusting the ledger instead of the artifact
+
+Same shape as the earlier `ledger.finish()` crash: calling someone else's
+API with the wrong signature and never exercising the path.
+
+The run also confirmed the scoping fix — zero tracker checks, zero
+tracker reverts, `red-flag-tracker.xlsx` intact.
+
+## runG_r1 (2026-08-25): the ledger the demo needs
+
+**5 UNSAT, 1 SAT, both deliverables present, memorandum conforming.**
+
+| seq | verdict | what |
+|---|---|---|
+| 19, 21, 26, 29, 44 | `UNSAT` | conversion of a memo whose summary listed too few findings |
+| 55 | `SAT` | `verify: red-flag-memo.docx` — 5 enumerated findings |
+
+The first run where the guard says **yes** as well as no, which is the
+difference between a control and a wall. The agent recovered on its own,
+without the briefing.
+
+A caution on verifying this: my first re-check reported the memo as
+non-conforming. That check used a hand-rolled XML strip, which cannot see
+Word list numbering at all — Word stores it in `numbering.xml`, not in
+the paragraph text. The guard's `SAT` was correct and my tool was wrong.
+Verify with the parser enforcement uses, `pandoc -t markdown
+--wrap=none`, or you are grading a different document.
+
 ## Layout
 
     policy/controls.md       the single rule (source for makeRules)
@@ -317,8 +445,8 @@ holds 4/4 across the 18 historical memos.
     hook/drafting.py         host-side counts; the only place facts are made
     hook/action_text.py      states the count as a number, one pathway
     hook/guard.py            DraftingGuard — wraps LAB's ToolExecutor
-    hook/runner.py           run entry point
-    tests/                   34 offline tests, no network or API key
+    hook/runner.py           run entry point; final_state verdict
+    tests/                   58 offline tests, no network or API key
 
 ## Run the tests
 
