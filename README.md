@@ -184,6 +184,76 @@ inside that range, near the top. At n=1, with the gate never firing on the
 memo, this says nothing about whether enforcement costs or gains
 anything — and it is not offered as though it does.
 
+## runE_r2 (2026-08-25): the gate fired correctly, and leaked anyway
+
+**34/50. C-036 failed. One block, zero permitted writes — and a `.docx` on
+disk regardless.**
+
+What happened, in order:
+
+1. The agent wrote the memo to `/tmp/red_flag_memo.md` via a heredoc. Its
+   executive summary was **1,041 characters of pure prose** — findings
+   lived in a table further down. The guard counted zero listed findings.
+2. It ran the conversion. **Blocked, correctly** — the source did not meet
+   the standard.
+3. It then ran pandoc **inside a Python one-liner**:
+   `python3 -c "subprocess.run(['pandoc', '/tmp/red_flag_memo.md', '-o',
+   'output/red-flag-memo.docx'])"`. The command-matching regex expects
+   bare paths; quoted list arguments slipped past it. The `.docx` was
+   written.
+4. LAB's judge failed C-036 on exactly the ground the rule encodes: *"It
+   does not enumerate or specifically describe any of the top 5 critical
+   findings. The detailed findings appear later in the body of the memo,
+   not in the executive summary itself."*
+
+So the rule was right, the block was right, the judge agreed with the
+rule — and the artifact shipped anyway because the gate had a third hole.
+
+### Third route, third time
+
+| Run | Route the agent used | Guard state |
+|---|---|---|
+| `runD_r1` | bash heredoc | `bash` ungoverned |
+| `runE_r1` | (complied first try) | content-sniffing false positives |
+| `runE_r2` | `python3 -c` wrapping pandoc | command-regex missed quoted args |
+
+**Pattern-matching command lines is a losing game.** Each fix closed one
+spelling of "convert this file" and the agent found another — not
+adversarially, just by having many ways to run a program. There is no
+finite list of shell incantations that produce a file.
+
+The robust answer is not a better regex. It is enforcement at the
+**filesystem**: make the output directory writable only through a checked
+path, so no command spelling matters. That means modifying LAB's sandbox,
+which costs this repo its "zero LAB modifications" property — a real
+trade-off, and the honest recommendation for anything beyond a demo.
+
+### And my own measurement was wrong
+
+I initially reported this run's artifact as **compliant**. It is not.
+
+`exec_summary_findings` bounded the executive summary at markdown
+headings, roman numerals, or ALL-CAPS lines. The shipped `.docx` renders
+its next heading as **"Risk Category Summary"** — Title Case — so the
+boundary was missed, the counter ran 4,000 characters into the body, and
+returned 9 findings for a summary containing none.
+
+The guard read the *markdown source*, found the boundary, and was right.
+My verification read the *`.docx`* and was wrong. The two disagreed about
+the same document and I believed the wrong one until the judge contradicted
+it.
+
+Fixed, and every prior compliance claim re-checked against the judge:
+
+| Run | Findings counted | Judge C-036 |
+|---|---|---|
+| `runD_r2` | 5 | pass |
+| `runE_r1` | 5 | pass |
+| `runE_r2` | 0 | **fail** |
+
+Only `runE_r2`'s claim was false. The implication behind the rule still
+holds 4/4 across the 18 historical memos.
+
 ## Layout
 
     policy/controls.md       the single rule (source for makeRules)

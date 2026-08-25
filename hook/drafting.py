@@ -129,6 +129,14 @@ _SECTION_BOUNDARY = re.compile(
     r"#{1,6}[ \t]*\S"                              # markdown heading
     r"|[IVX]{1,5}\.[ \t]*[A-Z]"                     # "II. RED FLAGS"
     r"|[A-Z][A-Z0-9 ,&/()'\u2014-]{8,70}$"           # bare CAPS heading
+    # Title Case heading: short, capitalised, no sentence punctuation.
+    # Missing this counted 9 findings in runE_r2's shipped memo, whose
+    # executive summary is pure prose and which LAB correctly failed —
+    # the counter ran past "Risk Category Summary" into the body. The
+    # guard read the markdown source and was right; this post-hoc check
+    # read the .docx and was wrong, so the two disagreed on the same
+    # document.
+    r"|(?:[A-Z][\w'\u2019-]*)(?:[ \t]+(?:[A-Z][\w'\u2019-]*|of|and|the|to|in|for|by)){0,7}[ \t]*$"
     r")", re.M)
 
 # Belt and braces: even with no boundary found, never scan past this.
