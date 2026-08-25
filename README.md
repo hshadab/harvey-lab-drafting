@@ -90,6 +90,62 @@ have made the claim false:
    run into the next section's `1.`, counting four where there were three.
    A numbered list must be **consecutively numbered** to continue.
 
+## The guarantee: verify the artifact, not the command
+
+Three runs escaped three different ways — a bash heredoc, then a
+content-sniffing gap, then `pandoc` wrapped in `python3 -c`. Each fix
+closed one spelling of "produce this file" and the agent found another,
+not adversarially but because **the set of ways to write a file is not
+enumerable**. `sh -c`, a Makefile, a script written then run, `xargs`, an
+editor — there is no finite list.
+
+So the guarantee no longer depends on recognising the command. Every tool
+call is wrapped:
+
+1. fingerprint the deliverables (bytes hash)
+2. let LAB's executor run the call, whatever it is
+3. fingerprint again — unchanged means nothing to do
+4. if a deliverable changed: parse it **in the sandbox** via LAB's own
+   `_read_and_parse`, count the findings, check with Preflight, record the
+   receipt
+5. non-compliant → restore the previous bytes (or delete if it did not
+   exist) and return the block message instead of the tool's result
+
+Route-independent by construction. A test asserts this by making a
+deliverable appear from `make memo` — a command the guard has no rule for
+— and confirming it is reverted.
+
+**Zero LAB modifications.** This uses only what the wrapped executor
+already exposes: `sandbox.exists/read_file/write_file/exec` and
+`_read_and_parse`. Nothing in `harvey-labs` is patched.
+
+It also removes a bug: the guard now reads the deliverable exactly as
+LAB's grader does, so the checker cannot disagree with the judge about
+the same document the way it did in `runE_r2`.
+
+### Why "revert" is the right semantics here, and where it would not be
+
+The standard is about what is **issued**. An associate hands a partner a
+memo missing its executive summary list; the partner hands it back. The
+draft existed — on a desk, in a drafts folder — and no control failed,
+because the control is "this does not go out."
+
+Reverting inside the tool call is that. The deliverable never survives to
+be delivered, the agent cannot build on it, and the final artifact is
+always verified because the last tool call is wrapped like every other.
+
+This would be the **wrong** semantics for an exfiltration rule. If the
+violation is that data left, a transmitted byte cannot be recalled and
+prevention must come first — which is why the conduct demo
+([harvey-lab-preflight](https://github.com/hshadab/harvey)) blocks before
+the action rather than verifying after it. Different rule types need
+different enforcement points, and that is a principled distinction rather
+than a compromise.
+
+The pre-checks below still run. They give the agent feedback while it is
+drafting, which is far cheaper to act on than a rejection after
+conversion — but they are the ergonomics, not the guarantee.
+
 ## Where it intercepts — by destination, not by content
 
 The deliverable is a known filename, and it comes into existence exactly

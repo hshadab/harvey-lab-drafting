@@ -47,6 +47,11 @@ import re
 from hook import action_text as at
 from hook.drafting import EngagementConfig, check_draft, citeable_names
 from hook.ledger import Ledger
+
+try:                                    # LAB's output mount
+    from sandbox.sandbox import OUTPUT_PATH as _OUTPUT_PATH
+except Exception:                       # offline tests run without LAB
+    _OUTPUT_PATH = "/workspace/output"
 from hook.preflight_client import PreflightClient, PreflightUnreachable
 
 # Governance is by DESTINATION, not by content.
@@ -111,6 +116,107 @@ class DraftingGuard:
         # Markdown sources seen this run, by basename. A conversion is
         # checked against the content of its source.
         self._sources: dict[str, str] = {}
+        # Last known-good bytes of each deliverable, for revert.
+        self._known: dict[str, bytes | None] = {}
+
+    # ---- artifact verification (route-independent) ----------------------
+
+    def _sandbox(self):
+        return getattr(self._inner, "sandbox", None)
+
+    def _deliverable_paths(self) -> list[str]:
+        return [f"{_OUTPUT_PATH}/{n}" for n in self._cfg.deliverable_names]
+
+    def _snapshot(self) -> dict[str, bytes | None]:
+        """Current bytes of each deliverable, or None if absent."""
+        sb = self._sandbox()
+        if sb is None:
+            return {}
+        out: dict[str, bytes | None] = {}
+        for path in self._deliverable_paths():
+            try:
+                out[path] = sb.read_file(path) if sb.exists(path) else None
+            except Exception:
+                out[path] = None
+        return out
+
+    def _revert(self, path: str, previous: bytes | None) -> None:
+        sb = self._sandbox()
+        if sb is None:
+            return
+        try:
+            if previous is None:
+                sb.exec(["rm", "-f", path])
+            else:
+                sb.write_file(path, previous)
+        except Exception:
+            pass                      # reported by the caller either way
+
+    def _verify_artifacts(self, before: dict[str, bytes | None],
+                          tool_name: str) -> str | None:
+        """Check any deliverable this call changed. Returns a block message
+        if one is non-compliant, having reverted it; None otherwise.
+
+        This is the enforcement point that does not depend on recognising
+        the command. runD_r1 escaped through a bash heredoc, runE_r2
+        through pandoc wrapped in `python3 -c`; both changed the file, so
+        both are caught here regardless of spelling.
+
+        The standard is about what is ISSUED, not about whether a bad
+        draft ever existed — an associate's rejected draft sat on a desk
+        too. So a non-compliant deliverable is reverted within the same
+        tool call and never survives to be delivered. Note this is the
+        right semantics for a work-product standard and the WRONG
+        semantics for an exfiltration rule, where a transmitted byte
+        cannot be recalled and prevention must come first.
+        """
+        after = self._snapshot()
+        for path, now in after.items():
+            if now is None or now == before.get(path):
+                continue              # unchanged or removed
+            name = Path(path).name
+            try:
+                text = self._inner._read_and_parse(path)
+            except Exception as exc:
+                self._revert(path, before.get(path))
+                self._ledger.record(
+                    tool=tool_name, summary=f"verify: {name}",
+                    action_text=f"verify: {name}", result="UNSAT",
+                    detail=f"deliverable unreadable ({exc}); reverted")
+                return (f"Blocked by firm drafting standard: {name} could "
+                        f"not be read for checking, so it was not kept.")
+
+            findings = check_draft(text, self._cfg.engagement,
+                                   self._doc_names)
+            facts = at.deliverable_action(name, findings)
+            res = self._checked(facts)
+            if res is None:
+                self._revert(path, before.get(path))
+                self._ledger.record(
+                    tool=tool_name, summary=f"verify: {name}",
+                    action_text=facts.text, result="OUTAGE-BLOCKED",
+                    detail="Preflight unreachable; deliverable reverted")
+                return ("SecurityError: firm drafting-standards check "
+                        f"unavailable; {name} was not kept.")
+
+            blocked, verdict, note = self._decide(res)
+            self._ledger.record(
+                tool=tool_name, summary=f"verify: {name}",
+                action_text=facts.text, result=verdict, detail=note or "",
+                check_id=res.get("check_id"),
+                proof_id=res.get("zk_proof_id") or res.get("proof_id"),
+                verification_time_ms=res.get("verification_time_ms"))
+            pid = res.get("zk_proof_id") or res.get("proof_id")
+            if pid:
+                self._cfg.proof_queue.append(pid)
+
+            if blocked:
+                self._revert(path, before.get(path))
+                return (at.block_message(findings) +
+                        f"\n\n{name} was not kept. Revise and produce it "
+                        f"again.")
+            self._known[path] = now
+        return None
 
     def __getattr__(self, name):
         # Everything not overridden here is LAB's own behaviour.
@@ -137,6 +243,21 @@ class DraftingGuard:
     # ---- the seam -------------------------------------------------------
 
     def execute(self, tool_name: str, arguments: str | dict) -> str:
+        """Every tool call is verified against the deliverables afterwards.
+
+        The pre-checks below still run — they give the agent feedback at
+        the moment it drafts, which is cheaper to act on than a rejection
+        after conversion. But they are no longer what makes the guarantee.
+        The guarantee is _verify_artifacts: whatever the command was, if a
+        deliverable changed and does not meet the standard, it is reverted
+        before the agent sees a result.
+        """
+        before = self._snapshot()
+        result = self._execute_inner(tool_name, arguments)
+        blocked = self._verify_artifacts(before, tool_name)
+        return blocked if blocked is not None else result
+
+    def _execute_inner(self, tool_name: str, arguments: str | dict) -> str:
         args = arguments
         if isinstance(args, str):
             try:

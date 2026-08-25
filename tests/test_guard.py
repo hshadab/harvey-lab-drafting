@@ -43,13 +43,48 @@ TRACKER_SCRIPT = ("cat > /tmp/build_tracker.py << 'PYEOF'\n"
                   + "PYEOF")
 
 
-class FakeInner:
+class FakeSandbox:
+    """Stands in for LAB's Sandbox: a dict of path -> bytes."""
     def __init__(self):
+        self.files: dict[str, bytes] = {}
+        self.execs: list[list[str]] = []
+
+    def exists(self, path):
+        return path in self.files
+
+    def read_file(self, path):
+        return self.files[path]
+
+    def write_file(self, path, content):
+        self.files[path] = content if isinstance(content, bytes) else content.encode()
+
+    def exec(self, cmd, **kw):
+        self.execs.append(cmd)
+        if cmd[:2] == ["rm", "-f"]:
+            self.files.pop(cmd[2], None)
+        return type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+
+class FakeInner:
+    """Stands in for LAB's ToolExecutor.
+
+    `writes` lets a test make a tool call produce a deliverable by a route
+    the guard cannot recognise from the command — which is the whole point
+    of verifying the artifact instead of the command.
+    """
+    def __init__(self, writes=None):
         self.calls = []
+        self.sandbox = FakeSandbox()
+        self._writes = writes or {}
 
     def execute(self, tool_name, arguments):
         self.calls.append((tool_name, arguments))
+        for path, content in self._writes.pop(tool_name, {}).items():
+            self.sandbox.write_file(path, content)
         return "OK: executed"
+
+    def _read_and_parse(self, path):
+        return self.sandbox.files[path].decode()
 
     def get_metrics(self):
         return {"files_read": 13}
@@ -70,8 +105,8 @@ class FakeClient:
                 "verification_time_ms": 5}
 
 
-def make_guard(client, tmp):
-    inner = FakeInner()
+def make_guard(client, tmp, writes=None):
+    inner = FakeInner(writes)
     g = DraftingGuard(inner, client, GuardConfig(
         policy_id="pol-1", documents_dir=str(tmp),
         deliverable_names=["red-flag-memo.docx", "red-flag-tracker.xlsx"],
@@ -175,6 +210,63 @@ class TestTheGate(unittest.TestCase):
         out = write(g, "output/red-flag-memo.docx", SHORT)
         self.assertEqual(inner.calls, [])
         self.assertIn("executive summary", out.lower())
+
+
+DELIVERABLE = "/workspace/output/red-flag-memo.docx"
+
+
+class TestArtifactVerification(unittest.TestCase):
+    """The guarantee. Route-independent: the command is never inspected.
+
+    runD_r1 escaped through a bash heredoc and runE_r2 through pandoc
+    wrapped in `python3 -c`. Both changed the deliverable, so both are
+    caught here whatever the command looked like.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+
+    def test_unrecognised_route_producing_a_bad_deliverable_is_reverted(self):
+        c = FakeClient("UNSAT")
+        g, inner = make_guard(c, self.tmp,
+                              writes={"bash": {DELIVERABLE: SHORT.encode()}})
+        out = g.execute("bash", json.dumps({"command": "make memo"}))
+        self.assertIn("executive summary", out.lower())
+        self.assertNotIn(DELIVERABLE, inner.sandbox.files,
+                         "non-compliant deliverable must not survive")
+
+    def test_unrecognised_route_producing_a_good_deliverable_is_kept(self):
+        c = FakeClient("SAT")
+        g, inner = make_guard(c, self.tmp,
+                              writes={"bash": {DELIVERABLE: COMPLIANT.encode()}})
+        out = g.execute("bash", json.dumps({"command": "make memo"}))
+        self.assertEqual(out, "OK: executed")
+        self.assertIn(DELIVERABLE, inner.sandbox.files)
+
+    def test_a_previously_good_deliverable_is_restored_not_deleted(self):
+        c = FakeClient("SAT")
+        g, inner = make_guard(c, self.tmp,
+                              writes={"bash": {DELIVERABLE: COMPLIANT.encode()}})
+        g.execute("bash", json.dumps({"command": "make memo"}))
+        c.verdict = "UNSAT"
+        inner._writes = {"bash": {DELIVERABLE: SHORT.encode()}}
+        g.execute("bash", json.dumps({"command": "make memo again"}))
+        self.assertEqual(inner.sandbox.files[DELIVERABLE], COMPLIANT.encode(),
+                         "the last compliant version must be restored")
+
+    def test_calls_that_change_nothing_are_not_checked(self):
+        c = FakeClient("SAT")
+        g, inner = make_guard(c, self.tmp)
+        g.execute("read", json.dumps({"file_path": "cim.docx"}))
+        self.assertEqual(c.actions, [], "no artifact changed, no check")
+
+    def test_outage_during_verification_reverts(self):
+        c = FakeClient(raises=True)
+        g, inner = make_guard(c, self.tmp,
+                              writes={"bash": {DELIVERABLE: COMPLIANT.encode()}})
+        out = g.execute("bash", json.dumps({"command": "make memo"}))
+        self.assertIn("unavailable", out.lower())
+        self.assertNotIn(DELIVERABLE, inner.sandbox.files)
 
 
 class TestFailureModes(unittest.TestCase):
