@@ -9,7 +9,6 @@ This compares the runner's argparse flags against the GuardConfig fields
 it populates, without a sandbox, an API key, or a container.
 """
 
-import argparse
 import ast
 import unittest
 from pathlib import Path
