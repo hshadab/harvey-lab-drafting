@@ -94,9 +94,15 @@ _HEREDOC_WRITE = re.compile(
 class GuardConfig:
     policy_id: str
     documents_dir: str
-    deliverable_names: list[str]
     engagement: EngagementConfig
     ledger_path: str
+    # Which deliverable this standard applies to. LAB's C-036 is itself
+    # scoped this way ("deliverables": ["red-flag-memo.docx"]), and the
+    # rule must be too: runF_r1 applied the executive-summary standard to
+    # red-flag-tracker.xlsx, a spreadsheet that can never contain an
+    # executive summary, and reverted the tracker four times running. A
+    # rule about memoranda has nothing to say about a spreadsheet.
+    governed_deliverable: str = "red-flag-memo.docx"
     fail_closed: bool = True
     max_retries: int = 3
     retry_wait_s: float = 2.0
@@ -125,7 +131,8 @@ class DraftingGuard:
         return getattr(self._inner, "sandbox", None)
 
     def _deliverable_paths(self) -> list[str]:
-        return [f"{_OUTPUT_PATH}/{n}" for n in self._cfg.deliverable_names]
+        """Only the deliverable this standard governs."""
+        return [f"{_OUTPUT_PATH}/{self._cfg.governed_deliverable}"]
 
     def _snapshot(self) -> dict[str, bytes | None]:
         """Current bytes of each deliverable, or None if absent."""
@@ -233,8 +240,8 @@ class DraftingGuard:
     # ---- what counts as a governed action ------------------------------
 
     def _is_deliverable(self, path: str) -> bool:
-        base = Path(path).name.lower()
-        return any(base == d.lower() for d in self._cfg.deliverable_names)
+        return (Path(path).name.lower()
+                == self._cfg.governed_deliverable.lower())
 
     @staticmethod
     def _is_source(path: str) -> bool:

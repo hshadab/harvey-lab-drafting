@@ -109,7 +109,6 @@ def make_guard(client, tmp, writes=None):
     inner = FakeInner(writes)
     g = DraftingGuard(inner, client, GuardConfig(
         policy_id="pol-1", documents_dir=str(tmp),
-        deliverable_names=["red-flag-memo.docx", "red-flag-tracker.xlsx"],
         engagement=CONFIG, ledger_path=str(Path(tmp) / "ledger.jsonl"),
         max_retries=1, retry_wait_s=0))
     return g, inner
@@ -213,6 +212,35 @@ class TestTheGate(unittest.TestCase):
 
 
 DELIVERABLE = "/workspace/output/red-flag-memo.docx"
+
+
+class TestRuleScope(unittest.TestCase):
+    """A rule about memoranda has nothing to say about a spreadsheet.
+
+    runF_r1 applied the executive-summary standard to red-flag-tracker.xlsx
+    and reverted the tracker four times. LAB's own C-036 is scoped to
+    red-flag-memo.docx; the rule is now scoped the same way.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+
+    def test_the_tracker_is_not_governed_by_a_memo_standard(self):
+        tracker = "/workspace/output/red-flag-tracker.xlsx"
+        c = FakeClient("UNSAT")
+        g, inner = make_guard(c, self.tmp,
+                              writes={"bash": {tracker: b"PK\x03\x04xlsx"}})
+        out = bash(g, "python build_tracker.py")
+        self.assertEqual(c.actions, [], "tracker must not be checked")
+        self.assertEqual(out, "OK: executed")
+        self.assertIn(tracker, inner.sandbox.files, "tracker must survive")
+
+    def test_writing_the_tracker_directly_is_not_governed(self):
+        c = FakeClient("UNSAT")
+        g, inner = make_guard(c, self.tmp)
+        write(g, "red-flag-tracker.xlsx", "rows " * 400)
+        self.assertEqual(c.actions, [])
+        self.assertEqual(len(inner.calls), 1)
 
 
 class TestArtifactVerification(unittest.TestCase):

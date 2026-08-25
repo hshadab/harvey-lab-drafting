@@ -114,12 +114,12 @@ def main():
     guard = DraftingGuard(inner, client, GuardConfig(
         policy_id=args.policy_id,
         documents_dir=task["docs_dir"],
-        deliverable_names=deliverables,
         engagement=engagement,
         ledger_path=str(results_dir / "ledger.jsonl"),
     ))
     print(f"Drafting guard up: policy {args.policy_id}, "
-          f"deliverables {deliverables}, "
+          f"governs {GuardConfig.governed_deliverable} "
+          f"(of {deliverables}), "
           f"client={engagement.client_names[:1]} firm={engagement.firm_names[:1]}")
 
     skill_names = DEFAULT_SKILLS if args.skills is None else args.skills
