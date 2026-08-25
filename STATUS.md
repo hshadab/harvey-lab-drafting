@@ -10,10 +10,29 @@ modified.
 
 ## Results
 
-| Run | Rule stated up front? | Blocked | Passed | Final state | LAB judge C-036 | Overall |
+Every run under the current architecture:
+
+| Run | Model | Rule stated up front? | Blocked | Final state | Findings | LAB judge C-036 |
 |---|---|---|---|---|---|---|
-| `runG_r1` | no | 5 | 1 | conforming, 5 findings | pass | 38/50 |
-| `runH_r1` | yes | 0 | 1 | `DELIVERED`, 15 findings | pass | 35/50 |
+| `runG_r1` | sonnet-4-6 | no | 5 | `DELIVERED` | 5 | pass |
+| `runH_r1` | sonnet-4-6 | yes | 0 | `DELIVERED` | 15 | pass |
+| `runI_r1` | haiku-4-5 | no | 0 | `DELIVERED` | 7 | not scored |
+| `runI_r2` | haiku-4-5 | no | 3 | `REFUSED` | — | not scored |
+| `runI_r3` | haiku-4-5 | no | 2 | `REFUSED` | — | not scored |
+| `runI_r4` | haiku-4-5 | no | 3 | `DELIVERED` | 5 | pass |
+
+**13 blocks, 4 conforming deliveries, 2 refusals, 0 escapes.**
+
+`ESCAPED` — a non-conforming deliverable surviving on disk — did not
+occur. Every `DELIVERED` memo was re-checked by hand with the parser
+below and conforms. Every `REFUSED` run has no `red-flag-memo.docx` on
+disk at all.
+
+The two refusals are the correct outcome, not a failure: the weaker model
+could not meet the standard, so nothing was issued and the run says so.
+Both still produced the tracker, which the rule does not govern.
+
+Overall LAB scores where measured: `runG_r1` 38/50, `runH_r1` 35/50.
 
 C-036 has passed in every run where the guard passed the memo as
 conforming — four so far, against a historical unenforced rate of 11 of
@@ -40,14 +59,6 @@ Both are kept; they answer different questions.
 A run with zero blocks cannot demonstrate that enforcement works, so
 soak testing uses the unbriefed setting.
 
-## In flight
-
-Four unbriefed runs on `claude-haiku-4-5` (`runI_r1`..`runI_r4`), one at
-a time. A weaker model produces more violations, so it is a harder test
-of whether the gate catches them. The result that matters is the final
-state of each run: `ESCAPED` would mean a non-conforming deliverable
-survived and the guarantee failed.
-
 ## Fixed (2026-08-25)
 
 | Commit | Problem |
@@ -63,7 +74,8 @@ suite.
 
 ## Known limits
 
-* Two clean scored runs is a small sample. The soak runs address this.
+* Six runs is still a small sample, and only three are scored by LAB's
+  judge.
 * `/v1/me` returns 403 on both auth headers, so the ICME credit balance
   cannot be read from here. Runs themselves work, so the key is valid.
 * Three of the five bugs above were found by running the system, not by
