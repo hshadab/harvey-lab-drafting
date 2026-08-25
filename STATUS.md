@@ -50,31 +50,45 @@ rather than its body is what produced zero false positives.
 
 ## Results
 
-`runM_r1` (sonnet, unbriefed) — **the guard blocked four times and then
-missed.** The entry that shipped was titled "RED FLAG 7 — Casper
-Facility Permit", never saying Wyoming in its heading, while its body
-said "The Wyoming hazardous waste permit … expired" and recommended
-obtaining written acknowledgment from Wyoming DEQ. LAB's judge failed
-C-032 on it.
+`runN_r1` (sonnet-4-6, unbriefed) — **`DELIVERED`, and LAB's judge passes
+C-032.** The first run where this rule holds end to end.
+
+| seq | verdict | route |
+|---|---|---|
+| 21, 24 | `UNSAT` | pre-check on the conversion command |
+| **38, 41** | `UNSAT` | **artifact verification of the produced `.docx`** |
+| 44 | `SAT` | conforming memorandum, delivered |
+
+Entries 38 and 41 are the ones that matter: a `.docx` got past the
+pre-check, and verification caught it on disk and reverted it. That is
+the route that defeated the previous version of the check.
+
+Verified by hand rather than from the banner: 22 red flags, none about
+the Wyoming permit. The only "Wyoming" in the document is "Ramirez v.
+RES (D. Wyo.)" — a court district, which the pattern correctly ignores.
+
+Overall 33/50. This rule is not meant to move the total; it governs one
+criterion, and that criterion went from FAIL to PASS.
+
+**The same memo still fails C-033** — RF-16 flags the Consolidated
+Mining termination-for-convenience clause as a standalone MEDIUM red
+flag. That is a second distractor this repo deliberately does not
+enforce, because matching it produced 12 false positives on legitimate
+mentions. The run demonstrates the rule we enforce, not
+distractor-avoidance generally.
+
+### The run before it
+
+`runM_r1` blocked four times and then missed: the entry that shipped was
+titled "RED FLAG 7 — Casper Facility Permit", never saying Wyoming in
+its heading, while its body said "The Wyoming hazardous waste permit …
+expired" and recommended obtaining written acknowledgment from Wyoming
+DEQ. LAB's judge failed C-032 on it.
 
 The check matched the heading, and the heading is the part the agent
-chooses. It now matches the whole entry. Whether the retitling was a
-response to being blocked or an incidental rewording is not something
-the transcript settles, and it does not matter: a check the agent can
-defeat by renaming is not a check.
-
-Both real documents are now regression fixtures — the renamed entry, and
-the memo where "Ramirez v. RES (D. Wyoming)" is a court rather than a
-permit. Reverting to heading-matching fails the suite.
-
-Re-measured across the 28 graded memos plus `runM_r1`: **24 blocks, zero
-false positives, 2 misses.**
-
-Runs that enforced the previous rule have been deleted; their ledgers
-described a standard this repo no longer has. They are in git history.
-
-What is measured for the current rule is offline, against the 28 graded
-memos: 23 true blocks, zero false blocks, 2 misses.
+chooses. It now matches the whole entry, with the pattern carrying its
+own precision. Both documents are regression fixtures; reverting to
+heading-matching fails the suite.
 
 ## What the configurations are for
 
