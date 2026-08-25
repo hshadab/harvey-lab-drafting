@@ -100,12 +100,11 @@ class GuardConfig:
     documents_dir: str
     engagement: EngagementConfig
     ledger_path: str
-    # Which deliverable this standard applies to. LAB's C-036 is itself
-    # scoped this way ("deliverables": ["red-flag-memo.docx"]), and the
-    # rule must be too: runF_r1 applied the executive-summary standard to
-    # red-flag-tracker.xlsx, a spreadsheet that can never contain an
-    # executive summary, and reverted the tracker four times running. A
-    # rule about memoranda has nothing to say about a spreadsheet.
+    # Which deliverable this standard applies to. LAB's own criterion is
+    # scoped this way ("deliverables": ["red-flag-memo.docx"]) and the
+    # rule must be too: a rule about memoranda has nothing to say about
+    # the tracker spreadsheet, and applying it there once destroyed a
+    # legitimate deliverable four times in one run.
     governed_deliverable: str = "red-flag-memo.docx"
     # Whether a block names the missing element. True is what a firm
     # would do; False is the demo's control arm — the gate alone, no
@@ -139,10 +138,10 @@ class DraftingGuard:
     def _deliverable_paths(self) -> list[str]:
         """Only the deliverable this standard governs.
 
-        runF_r1 applied the executive-summary rule to
-        red-flag-tracker.xlsx, a spreadsheet that can never contain an
-        executive summary, and reverted it four times. LAB's C-036 is
-        itself scoped to red-flag-memo.docx.
+        A rule about memoranda has nothing to say about the tracker
+        spreadsheet; applying it there once reverted a legitimate
+        deliverable four times in one run. LAB's own criterion is scoped
+        to red-flag-memo.docx.
         """
         return [f"{_OUTPUT_PATH}/{self._cfg.governed_deliverable}"]
 
@@ -208,10 +207,11 @@ class DraftingGuard:
         """Check any deliverable this call changed. Returns a block message
         if one is non-compliant, having reverted it; None otherwise.
 
-        This is the enforcement point that does not depend on recognising
-        the command. runD_r1 escaped through a bash heredoc, runE_r2
-        through pandoc wrapped in `python3 -c`; both changed the file, so
-        both are caught here regardless of spelling.
+        This is the enforcement point that does not depend on
+        recognising the command. A heredoc, a helper script, pandoc
+        wrapped in `python3 -c` — each changes the file, so each is
+        caught here regardless of spelling. The set of ways to write a
+        file is not enumerable; reading the finished file needs no list.
 
         The standard is about what is ISSUED, not about whether a bad
         draft ever existed — an associate's rejected draft sat on a desk
@@ -374,14 +374,12 @@ class DraftingGuard:
         """An edit carries a FRAGMENT, and a fragment must never be
         testified about as if it were the document.
 
-        The first version fed new_string through the same path as a full
-        write: editing one word of a compliant memo produced the action
-        string "the number of findings listed in the executive summary is
-        0" — false testimony about a memo that lists five, the exact §6
-        failure this repo's own docstrings warn about. The solver would
-        have blocked a conforming document, and worse, the recorded source
-        was REPLACED by the fragment, so every later conversion was judged
-        against a one-line string.
+        Feeding new_string through the same path as a full write would
+        testify about the fragment: editing one word of a compliant memo
+        would state facts computed from that word alone. The solver would
+        rule correctly on false testimony and block a conforming
+        document, and the recorded source would be replaced by the
+        fragment, so every later conversion would be judged against it.
 
         So an edit is never pre-checked. On the deliverable itself,
         _verify_artifacts reads the real resulting file after the call —
@@ -431,9 +429,10 @@ class DraftingGuard:
            source's content is checked here, so the .docx cannot come into
            existence from a draft that does not meet the standard.
 
-        This is what closes the runD_r1 bypass without the false positives
-        that content-sniffing produced: a script or a summary file is
-        untouched because neither becomes a deliverable.
+        Keying on the DESTINATION rather than the content is what avoids
+        the false positives content-sniffing produced: a build script or
+        a summary file is untouched, because neither becomes a
+        deliverable.
         """
         cmd = args.get("command") or ""
 

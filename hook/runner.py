@@ -9,7 +9,7 @@ Usage:
         --lab-root ~/harvey-labs \
         --model anthropic/claude-sonnet-4-6 \
         --policy-id <compiled drafting policy id> \
-        --run-id runD_r1
+        --run-id myrun
 
 No proof sweep here at all. The conduct demo added --no-proof-sweep after
 ICME reported server-side rate limiting, and the end-of-run download burst

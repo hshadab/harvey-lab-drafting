@@ -125,6 +125,13 @@ Across 28 graded memos plus the live runs: **27 blocks, zero false
 positives, zero misses.** The shape is a regression fixture in
 `tests/test_drafting.py`; removing the fallback fails the suite.
 
+> **Note on `runs/runM_r1/final_state.json`.** That run executed under
+> mid-refactor code, so its verdict is written in the previous rule's
+> language ("lists only 0 findings in its executive summary"). The
+> `ESCAPED` state is correct under the current rule too — the memo does
+> raise the cleared permit — but the detail line describes a standard
+> this repo no longer has. Kept unedited as a historical artifact.
+
 ### The run before that
 
 `runM_r1` blocked four times and then missed: the entry that shipped was
