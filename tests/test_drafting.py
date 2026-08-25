@@ -254,6 +254,38 @@ class TestWrappedListItems(unittest.TestCase):
         self.assertEqual(exec_summary_findings(text), 5,
                          "a restarting list after prose is a new list")
 
+    def test_bold_heading_is_recognised(self):
+        """pandoc renders a .docx 'heading' that is really a bold
+        paragraph as `**Executive Summary**` — python-docx-built memos
+        produce this routinely. Missing it counted 0 findings and blocked
+        a conforming memo."""
+        text = ("MEMORANDUM\n\n**Executive Summary**\n\n"
+                "1. a\n2. b\n3. c\n4. d\n5. e\n\nDetailed Findings\n")
+        self.assertEqual(exec_summary_findings(text), 5)
+
+    def test_underscore_and_numbered_bold_headings(self):
+        for heading in ("__EXECUTIVE SUMMARY__", "**II. Executive Summary**",
+                        "## **Executive Summary**", "## Executive Summary:"):
+            text = (f"MEMORANDUM\n\n{heading}\n\n"
+                    "1. a\n2. b\n3. c\n4. d\n5. e\n\nDetailed Findings\n")
+            self.assertEqual(exec_summary_findings(text), 5, heading)
+
+    def test_parenthesised_numbers_count(self):
+        text = ("EXECUTIVE SUMMARY\n\n(1) a\n(2) b\n(3) c\n(4) d\n(5) e\n\n"
+                "DETAILED FINDINGS\n")
+        self.assertEqual(exec_summary_findings(text), 5)
+
+    def test_no_executive_summary_counts_zero(self):
+        self.assertEqual(
+            exec_summary_findings("MEMO\n1. a\n2. b\n3. c\n4. d\n5. e\n"), 0)
+
+    def test_bold_subheading_inside_summary_does_not_truncate(self):
+        """A bold line inside the summary is a sub-label, not a section
+        boundary; the list after it must still count."""
+        text = ("## Executive Summary\n\n**Top Five Findings**\n\n"
+                "1. a\n2. b\n3. c\n4. d\n5. e\n\n## Detailed Findings\n")
+        self.assertEqual(exec_summary_findings(text), 5)
+
     def test_wrapped_prose_paragraph_is_not_a_finding(self):
         text = ("## Executive Summary\n\nWe identified fifteen (15) "
                 "material red flags across six categories:\n"

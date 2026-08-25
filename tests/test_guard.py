@@ -126,12 +126,12 @@ class FakeClient:
                 "verification_time_ms": 5}
 
 
-def make_guard(client, tmp, writes=None):
+def make_guard(client, tmp, writes=None, explain_blocks=True):
     inner = FakeInner(writes)
     g = DraftingGuard(inner, client, GuardConfig(
         policy_id="pol-1", documents_dir=str(tmp),
         engagement=CONFIG, ledger_path=str(Path(tmp) / "ledger.jsonl"),
-        max_retries=1, retry_wait_s=0))
+        max_retries=1, retry_wait_s=0, explain_blocks=explain_blocks))
     return g, inner
 
 
@@ -539,6 +539,170 @@ class TestStandardBriefing(unittest.TestCase):
                                   BAD_SUMMARY.encode()}})
         out = bash(g, "cp /tmp/x.docx $OUTPUT_DIR/red-flag-memo.docx")
         self.assertIn("was not kept", out)
+
+
+class TestEditTool(unittest.TestCase):
+    """An edit carries a fragment. A fragment must never be testified
+    about as if it were the document: the first version fed new_string
+    through the full-write path, so editing one word of a compliant memo
+    produced "the number of findings ... is 0" — false testimony — and
+    REPLACED the recorded source with the fragment, so every later
+    conversion was judged against a one-line string.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+
+    def edit(self, g, path, old, new):
+        return g.execute("edit", json.dumps(
+            {"file_path": path, "old_string": old, "new_string": new}))
+
+    def test_edited_source_converts_against_the_edited_document(self):
+        c = FakeClient("SAT")
+        g, inner = make_guard(c, self.tmp)
+        write(g, "memo.md", COMPLIANT)
+        self.edit(g, "memo.md", "Permit issue", "Permit problem")
+        bash(g, "pandoc memo.md -o output/red-flag-memo.docx")
+        self.assertEqual(len(c.actions), 1)
+        self.assertIn("executive summary is 5", c.actions[0],
+                      "testimony must describe the document, not the "
+                      "edit fragment")
+
+    def test_edit_that_guts_the_summary_blocks_the_conversion(self):
+        c = FakeClient("UNSAT")
+        g, inner = make_guard(c, self.tmp)
+        write(g, "memo.md", COMPLIANT)
+        self.edit(g, "memo.md",
+                  "4. Lease consent never obtained.\n"
+                  "5. NLRB petition disclosed in a footnote.\n", "")
+        out = bash(g, "pandoc memo.md -o output/red-flag-memo.docx")
+        self.assertIn("executive summary is 3", c.actions[0])
+        self.assertIn("executive summary", out.lower())
+
+    def test_unmirrorable_edit_drops_the_record_instead_of_guessing(self):
+        c = FakeClient("SAT")
+        g, inner = make_guard(c, self.tmp)
+        write(g, "memo.md", COMPLIANT)
+        self.edit(g, "memo.md", "text that is not in the source", "x")
+        out = bash(g, "pandoc memo.md -o output/red-flag-memo.docx")
+        self.assertEqual(c.actions, [], "stale text must not be testified")
+        self.assertIn("never written through a channel", out)
+
+    def test_edit_on_the_deliverable_is_not_pre_checked(self):
+        """The fragment is not the document; _verify_artifacts reads the
+        real result afterwards, so no pre-check (and no false testimony)
+        is needed."""
+        c = FakeClient("UNSAT")
+        g, inner = make_guard(c, self.tmp)
+        inner.sandbox.files[DELIVERABLE] = COMPLIANT.encode()
+        out = self.edit(g, "output/red-flag-memo.docx", "x", "y")
+        self.assertEqual(out, "OK: executed")
+        self.assertEqual(len(inner.calls), 1, "the edit must execute")
+
+    def test_edit_producing_a_bad_deliverable_is_still_reverted(self):
+        """No pre-check does not mean no check: the artifact the edit
+        actually produced is verified and reverted like any other route."""
+        c = FakeClient("UNSAT")
+        g, inner = make_guard(c, self.tmp,
+                              writes={"edit": {DELIVERABLE: SHORT.encode()}})
+        inner.sandbox.files[DELIVERABLE] = COMPLIANT.encode()
+        out = self.edit(g, "output/red-flag-memo.docx", "a", "b")
+        self.assertIn("was not kept", out)
+        self.assertEqual(inner.sandbox.files[DELIVERABLE], COMPLIANT.encode(),
+                         "the compliant version must be restored")
+
+
+class TestConversionSpellings(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+
+    def test_quoted_paths_are_still_the_gate(self):
+        c = FakeClient("SAT")
+        g, inner = make_guard(c, self.tmp)
+        write(g, "memo.md", COMPLIANT)
+        bash(g, 'pandoc "memo.md" -o "output/red-flag-memo.docx"')
+        self.assertEqual(len(c.actions), 1, "quoting must not skip the gate")
+
+    def test_testimony_names_the_deliverable_not_the_command(self):
+        c = FakeClient("SAT")
+        g, inner = make_guard(c, self.tmp)
+        write(g, "memo.md", COMPLIANT)
+        bash(g, "pandoc memo.md -o output/red-flag-memo.docx")
+        self.assertIn("red-flag-memo.docx", c.actions[0])
+        self.assertNotIn("->", c.actions[0],
+                         "the command belongs in the ledger, not in the "
+                         "action string the solver reasons over")
+
+
+class TestBareBlocks(unittest.TestCase):
+    """The demo's control arm: the gate alone, no repair signal.
+
+    Enforcement and the ledger are IDENTICAL to the explained mode — the
+    solver rules on the same facts and the receipt records them in full.
+    The only difference is what the agent is told.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+
+    def test_bare_block_does_not_name_the_defect(self):
+        c = FakeClient("UNSAT")
+        g, inner = make_guard(c, self.tmp, explain_blocks=False)
+        write(g, "memo.md", SHORT)
+        out = bash(g, "pandoc memo.md -o output/red-flag-memo.docx")
+        self.assertIn("Blocked by firm drafting standard", out)
+        self.assertNotIn("executive summary", out.lower(),
+                         "bare mode must not name the missing element")
+        self.assertNotIn("at least 5", out)
+        self.assertEqual(len(inner.calls), 1, "conversion must not run")
+
+    def test_bare_mode_enforces_identically_and_reverts(self):
+        c = FakeClient("UNSAT")
+        g, inner = make_guard(c, self.tmp, explain_blocks=False,
+                              writes={"bash": {DELIVERABLE: SHORT.encode()}})
+        out = bash(g, "make memo")
+        self.assertIn("was not kept", out)
+        self.assertNotIn("executive summary", out.lower())
+        self.assertNotIn(DELIVERABLE, inner.sandbox.files,
+                         "bare mode must revert exactly like explained mode")
+
+    def test_bare_mode_ledger_still_records_the_full_facts(self):
+        """What changes is what the AGENT is told; the receipt does not
+        get vaguer."""
+        c = FakeClient("UNSAT")
+        g, _ = make_guard(c, self.tmp, explain_blocks=False)
+        write(g, "memo.md", SHORT)
+        bash(g, "pandoc memo.md -o output/red-flag-memo.docx")
+        self.assertIn("executive summary is 3", c.actions[0],
+                      "the solver must still rule on the real count")
+        entries = [json.loads(l) for l
+                   in open(g.ledger.path, encoding="utf-8") if l.strip()]
+        unsat = [e for e in entries if e["result"] == "UNSAT"]
+        self.assertTrue(any("executive summary is 3" in e["action_text"]
+                            for e in unsat))
+
+    def test_explained_mode_is_the_default_and_names_the_defect(self):
+        c = FakeClient("UNSAT")
+        g, _ = make_guard(c, self.tmp)
+        write(g, "memo.md", SHORT)
+        out = bash(g, "pandoc memo.md -o output/red-flag-memo.docx")
+        self.assertIn("executive summary lists 3", out)
+        self.assertIn("at least 5", out)
+
+
+class TestDecideFailsClosed(unittest.TestCase):
+    def test_garbage_verdict_blocks(self):
+        blocked, verdict, note = DraftingGuard._decide(
+            {"result": "PROBABLY_FINE", "z3_result": None, "detail": ""})
+        self.assertTrue(blocked)
+        self.assertEqual(verdict, "UNSAT")
+        self.assertIn("fail-closed", note)
+
+    def test_z3_overrides_a_disagreeing_combined_result(self):
+        blocked, verdict, _ = DraftingGuard._decide(
+            {"result": "SAT", "z3_result": "UNSAT", "detail": ""})
+        self.assertTrue(blocked)
+        self.assertEqual(verdict, "UNSAT")
 
 
 class TestVerdictIsAlwaysRecorded(unittest.TestCase):

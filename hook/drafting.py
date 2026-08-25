@@ -98,8 +98,17 @@ _CLEARED_HEADING = re.compile(
 # satisfy the standard; require some prose beneath it.
 _MIN_CLEARED_CHARS = 120
 
+# The heading may arrive emphasis-wrapped: pandoc renders a .docx
+# "heading" that is really a bold paragraph as `**Executive Summary**`,
+# which python-docx-built memos produce routinely. Without the [*_]
+# allowance that memo counts 0 findings and a conforming document is
+# blocked. The section BOUNDARY deliberately does not get the same
+# allowance: a bold line inside the summary ("**Top Five Findings**") is
+# far more often a sub-label than a new section, and prose-at-margin
+# already ends the count run either way.
 _EXEC_SUMMARY_HEADING = re.compile(
-    r"^[ \t]*(?:#{1,6}[ \t]*)?(?:[IVX]+\.[ \t]*|\d+[.)][ \t]*)?"
+    r"^[ \t]*(?:#{1,6}[ \t]*)?(?:[*_]{1,3}[ \t]*)?"
+    r"(?:[IVX]+\.[ \t]*|\d+[.)][ \t]*)?(?:[*_]{1,3})?"
     r"executive\s+summary[^\n]{0,40}$", re.I | re.M)
 
 # An enumerated finding inside the executive summary: a bullet or a

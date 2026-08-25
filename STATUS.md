@@ -34,6 +34,26 @@ Both still produced the tracker, which the rule does not govern.
 
 Overall LAB scores where measured: `runG_r1` 38/50, `runH_r1` 35/50.
 
+### One delivery is weaker evidence than it looks
+
+`runI_r1` passed with 7 counted items, but they are risk **categories**,
+not findings:
+
+    • Revenue & Customer Concentration (3 flags)
+    • Debt & Financing (1 flag)
+    • Environmental & Regulatory (5 flags)
+    ... 7 in total
+
+The actual findings list in that summary has three items, under
+"CRITICAL SEVERITY FLAGS (3)". The mechanical rule counts an
+enumeration, and an enumeration of categories satisfies it.
+
+This is the first plausible counterexample to the claim that the
+stricter mechanical rule implies C-036, and it is unscored. If LAB's
+judge fails `runI_r1` on C-036, the rule needs to distinguish a finding
+from a category. Scoring it is the informative next step, not a
+formality.
+
 C-036 has passed in every run where the guard passed the memo as
 conforming — four so far, against a historical unenforced rate of 11 of
 18. Only runs under the current architecture are kept in `runs/`; scores
@@ -46,9 +66,13 @@ The overall scores read FAIL because LAB gates on all 50 criteria. That
 number does not measure this system, which makes one claim about one
 criterion.
 
-## What the two configurations are for
+## What the configurations are for
 
-Both are kept; they answer different questions.
+Two independent knobs, each changing only what the agent is told —
+enforcement, the solver's facts, and the ledger are identical in every
+combination.
+
+**Before the work — is the rule stated up front?**
 
 * **Rule not stated** (`--no-briefing`) — the honest test of enforcement.
   The agent writes what it would naturally write, some of it fails, and
@@ -56,8 +80,22 @@ Both are kept; they answer different questions.
 * **Rule stated** — what a firm would actually do: state the house style
   rather than silently reject drafts. Produces few or no blocks.
 
-A run with zero blocks cannot demonstrate that enforcement works, so
-soak testing uses the unbriefed setting.
+**At a block — is the agent told why?**
+
+* **Bare block** (`--bare-blocks`) — the refusal names no missing
+  element. This is the control arm: it shows the gate holds regardless
+  of what the agent does with the news. Expect thrash — two earlier
+  runs read unexplained blocks as broken tooling and went off to strace
+  pandoc; the deliverable stayed governed the whole time.
+* **Explained block** (default) — the refusal names the defect ("the
+  executive summary lists 3 findings; at least 5 must be listed"), so
+  the agent revises the memo and converges. This is the demo's product
+  arm.
+
+The planned head-to-head is both arms unbriefed: same model, same task,
+same policy — one run shows blocking alone, the other shows
+block-and-repair. A run with zero blocks cannot demonstrate that
+enforcement works, so both arms use the unbriefed setting.
 
 ## Fixed (2026-08-25)
 
@@ -68,18 +106,33 @@ soak testing uses the unbriefed setting.
 | `4f974d5` | No verdict at the end of a run; the finding count depended on LAB's pandoc flags rather than on the document |
 | `f3dca86` | A crashed run left no verdict at all |
 | `184372e` | README predated all of the above |
+| `b540874` | An `edit` tool call testified about the fragment as if it were the document — false testimony, the §6 failure — and replaced the recorded source with the fragment; a bold `**Executive Summary**` heading (pandoc's rendering of a bold-paragraph heading) counted 0 findings and would have blocked a conforming memo; quoted conversion paths skipped the early gate |
 
-58 offline tests. Each fix is mutation-checked: reverting it fails the
+81 offline tests. Each fix is mutation-checked: reverting it fails the
 suite.
 
 ## Known limits
 
 * Six runs is still a small sample, and only three are scored by LAB's
   judge.
+* **A run directory with no `final_state.json` must be read as
+  unverified, exactly like `ESCAPED`.** The crash handler covers the
+  *process* dying; it cannot cover the machine dying or a run being
+  killed. Do not read a missing verdict as a clean refusal.
+* The rule counts enumerated items and cannot tell a finding from a
+  category heading — see the `runI_r1` note above.
 * `/v1/me` returns 403 on both auth headers, so the ICME credit balance
   cannot be read from here. Runs themselves work, so the key is valid.
-* Three of the five bugs above were found by running the system, not by
-  the tests. Assume more exist.
+* Most of the bugs above were found by running or probing the system,
+  not by the pre-existing tests. Assume more exist.
+* The verdict-on-crash guarantee covers the runner process dying, not
+  the machine dying (`runI_r2`). A run directory without
+  `final_state.json` is unverified — treat it as `ESCAPED`.
+* The rule counts an *enumeration*; an enumerated list of risk
+  categories satisfies it just as a list of findings does (`runI_r1`).
+  The stricter-rule-implies-criterion evidence in the README is about
+  memos that enumerate findings; category-list summaries are a shape
+  that evidence does not yet cover.
 
 ## Verifying a memo by hand
 

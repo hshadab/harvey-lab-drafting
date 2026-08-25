@@ -304,7 +304,8 @@ print(exec_summary_findings(open('/tmp/m.md').read()))"
     hook/action_text.py      states the count as a number, one pathway
     hook/guard.py            DraftingGuard — wraps LAB's ToolExecutor
     hook/runner.py           run entry point; final_state verdict
-    tests/                   58 offline tests, no network or API key
+    tests/                   81 offline tests, no network or API key
+                             (also run in CI: .github/workflows/tests.yml)
 
 ## Run the tests
 

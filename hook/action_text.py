@@ -71,10 +71,21 @@ def deliverable_action(file_path: str, f: DraftingFindings) -> ActionFacts:
         **common)
 
 
-def block_message(f: DraftingFindings) -> str:
-    """What the agent is told when a draft is refused. Naming the specific
-    defect is what lets it repair the draft rather than guess; a bare
-    refusal produces thrash."""
+def block_message(f: DraftingFindings, explain: bool = True) -> str:
+    """What the agent is told when a draft is refused.
+
+    Two modes, one enforcement. `explain=True` names the specific defect,
+    which is what lets the agent repair the draft rather than guess.
+    `explain=False` is the bare refusal — the demo's control arm, showing
+    the gate holds regardless of what the agent does with the news. The
+    facts the solver ruled on are identical either way and the ledger
+    records them in full in both modes; only what the AGENT is told
+    changes. Expect thrash in bare mode: two recorded runs read an
+    unexplained block as broken tooling and went off to strace pandoc.
+    """
+    if not explain:
+        return ("Blocked by firm drafting standard: this memorandum does "
+                "not meet the firm's issuing standard.")
     items = "\n".join(f"  - {m}" for m in f.missing())
     return (
         "Blocked by firm drafting standard: this memorandum does not meet "
