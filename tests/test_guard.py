@@ -1,10 +1,13 @@
 """Offline tests for DraftingGuard. No network, no API key, no credits.
 
-The Preflight client and LAB's ToolExecutor are both faked, so this
-exercises the real decision path — which writes are governed, what the
-solver is told, what happens on UNSAT and on an outage — without spending
-anything. Everything here would otherwise only be discovered mid-run at
-~$13 and ~50 credits a go.
+The Preflight client and LAB's ToolExecutor are both faked, so the real
+decision path is exercised without spending anything.
+
+These cover the DESTINATION model: the guard governs what becomes the
+deliverable, not what looks like prose about red flags. Three earlier
+content-sniffing versions each produced false positives in live runs — a
+50KB xlsx-builder script and the agent's response.md were both refused
+despite neither ever becoming a deliverable.
 """
 
 import json
@@ -22,31 +25,25 @@ CONFIG = EngagementConfig(
     engagement_reference=("Project Ridgeline",),
 )
 
-COMPLIANT = (
-    "MEMORANDUM\n"
-    "To: Sycamore Capital Partners\nFrom: Thornfield & Associates LLP\n"
-    "Re: Project Ridgeline diligence red flags\n\n" + 'EXECUTIVE SUMMARY\n\nThe most significant concerns are:\n1. DOE ceiling exhaustion affecting the largest customer relationship.\n2. Unreconciled EBITDA discrepancy between the CIM and the QofE pack.\n3. Stale environmental assessment with no vapour intrusion work.\n4. Salt Lake City lease assignment consent never obtained.\n5. NLRB union election petition disclosed only in a footnote.\n6. Asbestos long-tail exposure against a blanket policy exclusion.\n\n' +
-    "1. Environmental permit not transferred\n"
-    + "The permit was never transferred to the buyer entity. " * 30 + "\n\n"
-    "Items reviewed and cleared\n"
-    + "The Wyoming renewal was filed timely and is not a red flag. " * 6)
+FIVE = ("EXECUTIVE SUMMARY\n\nThe most significant concerns are:\n"
+        "1. DOE ceiling exhaustion.\n2. Unreconciled EBITDA discrepancy.\n"
+        "3. Stale environmental assessment.\n4. Lease consent never obtained.\n"
+        "5. NLRB petition disclosed in a footnote.\n\n")
+THREE = ("EXECUTIVE SUMMARY\n\nThe three most critical issues are:\n"
+         "1. DOE ceiling exhaustion.\n2. Unreconciled EBITDA discrepancy.\n"
+         "3. Stale environmental assessment.\n\n")
 
-# Long enough to be governed on its own — the guard only governs writes
-# that are plausibly the memo, so test data must clear that bar or the
-# test silently exercises the skip path instead of the block path.
-NO_CLEARED = COMPLIANT.split("Items reviewed and cleared")[0]
-assert len(NO_CLEARED) > 1200, "test draft too short to be governed"
+COMPLIANT = "MEMORANDUM\n\n" + FIVE + "1. Permit issue\n" + "detail. " * 200
+SHORT = "MEMORANDUM\n\n" + THREE + "1. Permit issue\n" + "detail. " * 200
 
-# A draft whose executive summary lists only three findings — the single
-# enforced standard is the one it violates.
-SHORT_SUMMARY = COMPLIANT.replace(
-    "4. Salt Lake City lease assignment consent never obtained.\n", "").replace(
-    "5. NLRB union election petition disclosed only in a footnote.\n", "").replace(
-    "6. Asbestos long-tail exposure against a blanket policy exclusion.\n", "")
+# The 50KB xlsx builder that runE_r1 refused eight times.
+TRACKER_SCRIPT = ("cat > /tmp/build_tracker.py << 'PYEOF'\n"
+                  "import openpyxl\n"
+                  + "rows.append(('red flag', 'diligence finding'))\n" * 60
+                  + "PYEOF")
 
 
 class FakeInner:
-    """Stands in for LAB's ToolExecutor."""
     def __init__(self):
         self.calls = []
 
@@ -60,7 +57,7 @@ class FakeInner:
 
 class FakeClient:
     def __init__(self, verdict="SAT", raises=False):
-        self.verdict, self.raises = verdict, False if not raises else True
+        self.verdict, self.raises = verdict, raises
         self.actions = []
 
     def check_it(self, policy_id, action):
@@ -77,187 +74,151 @@ def make_guard(client, tmp):
     inner = FakeInner()
     g = DraftingGuard(inner, client, GuardConfig(
         policy_id="pol-1", documents_dir=str(tmp),
-        deliverable_names=["red-flag-memo.docx"], engagement=CONFIG,
-        ledger_path=str(Path(tmp) / "ledger.jsonl"),
+        deliverable_names=["red-flag-memo.docx", "red-flag-tracker.xlsx"],
+        engagement=CONFIG, ledger_path=str(Path(tmp) / "ledger.jsonl"),
         max_retries=1, retry_wait_s=0))
     return g, inner
 
 
-class TestGoverning(unittest.TestCase):
+def bash(g, cmd):
+    return g.execute("bash", json.dumps({"command": cmd}))
+
+
+def write(g, path, content):
+    return g.execute("write", json.dumps({"file_path": path,
+                                          "content": content}))
+
+
+class TestNotGoverned(unittest.TestCase):
+    """Things that never become a deliverable are never checked."""
+
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
 
-    def test_markdown_draft_is_governed_even_though_not_the_deliverable(self):
-        """The memo is written as .md and converted to .docx afterwards, so
-        governing only the deliverable filename would intercept nothing."""
-        c = FakeClient("SAT")
+    def test_tracker_builder_script_is_untouched(self):
+        c = FakeClient("UNSAT")
         g, inner = make_guard(c, self.tmp)
-        g.execute("write", json.dumps(
-            {"file_path": "memo_content.md", "content": COMPLIANT}))
-        self.assertEqual(len(c.actions), 1, "draft was not checked")
+        bash(g, TRACKER_SCRIPT)
+        self.assertEqual(c.actions, [], "script must not be checked")
+        self.assertEqual(len(inner.calls), 1, "script must execute")
 
-    def test_short_scratch_note_is_not_governed(self):
-        c = FakeClient("SAT")
+    def test_response_md_is_untouched(self):
+        """runE_r1 refused this twice. It is not a deliverable."""
+        c = FakeClient("UNSAT")
         g, inner = make_guard(c, self.tmp)
-        g.execute("write", json.dumps(
-            {"file_path": "notes.md", "content": "todo: read the CIM"}))
-        self.assertEqual(c.actions, [], "scratch note should not be checked")
-        self.assertEqual(len(inner.calls), 1, "scratch note should execute")
+        write(g, "response.md", "# Summary of red flags\n" + "prose. " * 400)
+        self.assertEqual(c.actions, [])
+        self.assertEqual(len(inner.calls), 1)
 
-    def test_reads_are_never_governed(self):
+    def test_reads_and_ordinary_commands_are_untouched(self):
         c = FakeClient("SAT")
         g, inner = make_guard(c, self.tmp)
         g.execute("read", json.dumps({"file_path": "cim.docx"}))
+        bash(g, "ls -la && cat notes.txt")
         self.assertEqual(c.actions, [])
+        self.assertEqual(len(inner.calls), 2)
+
+    def test_writing_a_source_is_recorded_not_checked(self):
+        c = FakeClient("UNSAT")
+        g, inner = make_guard(c, self.tmp)
+        write(g, "memo.md", SHORT)
+        self.assertEqual(c.actions, [], "a source alone is not consequential")
         self.assertEqual(len(inner.calls), 1)
 
 
-class TestBashBypass(unittest.TestCase):
-    """runD_r1: blocked three times on `write`, the agent wrote the memo
-    with a bash heredoc and converted it with generate_from_md.py. Zero
-    permitted writes, a finished .docx on disk. These pin that shut."""
+class TestTheGate(unittest.TestCase):
+    """The deliverable cannot come into existence from a bad source."""
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
 
-    def test_heredoc_carrying_the_memo_is_checked(self):
-        c = FakeClient("UNSAT")
-        g, inner = make_guard(c, self.tmp)
-        out = g.execute("bash", json.dumps(
-            {"command": "cat > /tmp/memo.md << 'EOF'\n" + NO_CLEARED + "\nEOF"}))
-        self.assertEqual(len(c.actions), 1, "heredoc memo was not checked")
-        self.assertEqual(inner.calls, [], "blocked heredoc must not execute")
-
-    def test_generating_the_deliverable_without_an_approved_draft_is_blocked(self):
+    def test_conversion_from_compliant_source_is_permitted(self):
         c = FakeClient("SAT")
         g, inner = make_guard(c, self.tmp)
-        out = g.execute("bash", json.dumps({"command":
-            "python skills/docx/scripts/generate_from_md.py /tmp/m.md "
-            "output/red-flag-memo.docx"}))
-        self.assertEqual(inner.calls, [], "conversion must not outrun the check")
-        self.assertIn("no draft meeting the issuing standard", out)
+        write(g, "memo.md", COMPLIANT)
+        bash(g, "python generate_from_md.py memo.md output/red-flag-memo.docx")
+        self.assertEqual(len(c.actions), 1, "conversion must be checked")
+        self.assertIn("executive summary is 5", c.actions[0])
+        self.assertEqual(len(inner.calls), 2)
 
-    def test_generating_is_allowed_after_a_draft_is_approved(self):
-        c = FakeClient("SAT")
-        g, inner = make_guard(c, self.tmp)
-        g.execute("write", json.dumps(
-            {"file_path": "memo.md", "content": COMPLIANT}))      # approved
-        g.execute("bash", json.dumps({"command":
-            "python skills/docx/scripts/generate_from_md.py /tmp/m.md "
-            "output/red-flag-memo.docx"}))
-        self.assertEqual(len(inner.calls), 2, "approved draft should allow conversion")
-
-    def test_ordinary_shell_commands_still_pass(self):
-        c = FakeClient("SAT")
-        g, inner = make_guard(c, self.tmp)
-        g.execute("bash", json.dumps({"command": "ls -la"}))
-        self.assertEqual(c.actions, [])
-        self.assertEqual(len(inner.calls), 1)
-
-
-class TestFalsePositives(unittest.TestCase):
-    """runE_r1 blocked the agent's xlsx-tracker builder eight times. It had
-    already produced a compliant memo and could not get on with its work.
-    These pin the classifier so topic vocabulary alone never counts."""
-
-    def setUp(self):
-        self.tmp = tempfile.mkdtemp()
-
-    def test_python_heredoc_with_legal_vocabulary_is_not_a_draft(self):
-        script = ("cat > /tmp/build_tracker.py << 'PYEOF'\n"
-                  "import openpyxl\n"
-                  "from openpyxl.styles import Font\n"
-                  "rows = [\n"
-                  + "    ('red flag', 'diligence finding', 'Critical'),\n" * 60
-                  + "]\nPYEOF")
-        self.assertGreater(len(script), 1200)
+    def test_conversion_from_short_source_is_blocked(self):
         c = FakeClient("UNSAT")
         g, inner = make_guard(c, self.tmp)
-        g.execute("bash", json.dumps({"command": script}))
-        self.assertEqual(c.actions, [], "tracker script must not be checked")
-        self.assertEqual(len(inner.calls), 1, "tracker script must execute")
-
-    def test_inline_python_heredoc_is_not_a_draft(self):
-        script = ("python3 << 'PYEOF'\nimport openpyxl\n"
-                  + "# red flag diligence memorandum row\n" * 80 + "PYEOF")
-        c = FakeClient("UNSAT")
-        g, inner = make_guard(c, self.tmp)
-        g.execute("bash", json.dumps({"command": script}))
-        self.assertEqual(c.actions, [])
-        self.assertEqual(len(inner.calls), 1)
-
-    def test_markdown_heredoc_carrying_the_memo_is_still_a_draft(self):
-        """The fix must not reopen the bypass it sits next to."""
-        cmd = "cat > memo.md << 'EOF'\n" + SHORT_SUMMARY + "\nEOF"
-        c = FakeClient("UNSAT")
-        g, inner = make_guard(c, self.tmp)
-        out = g.execute("bash", json.dumps({"command": cmd}))
-        self.assertEqual(len(c.actions), 1, "memo heredoc must be checked")
-        self.assertEqual(inner.calls, [], "blocked memo must not execute")
-
-
-class TestEnforcement(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.mkdtemp()
-
-    def test_unsat_blocks_the_write_and_explains_why(self):
-        c = FakeClient("UNSAT")
-        g, inner = make_guard(c, self.tmp)
-        out = g.execute("write", json.dumps(
-            {"file_path": "memo_content.md", "content": SHORT_SUMMARY}))
-        self.assertEqual(inner.calls, [], "blocked write must not execute")
+        write(g, "memo.md", SHORT)
+        out = bash(g, "python generate_from_md.py memo.md "
+                      "output/red-flag-memo.docx")
+        self.assertEqual(len(inner.calls), 1, "only the source write ran")
         self.assertIn("executive summary", out.lower())
-        self.assertIn("drafting standard", out.lower())
+        self.assertIn("executive summary is 3", c.actions[0])
 
-    def test_sat_delegates_to_lab(self):
+    def test_conversion_from_unseen_source_is_blocked(self):
+        """The bypass: a source the guard never saw written."""
         c = FakeClient("SAT")
         g, inner = make_guard(c, self.tmp)
-        out = g.execute("write", json.dumps(
-            {"file_path": "memo_content.md", "content": COMPLIANT}))
-        self.assertEqual(len(inner.calls), 1)
-        self.assertEqual(out, "OK: executed")
+        out = bash(g, "pandoc /tmp/smuggled.md -o output/red-flag-memo.docx")
+        self.assertEqual(inner.calls, [], "unknown source must not convert")
+        self.assertIn("never written through a channel", out)
+
+    def test_heredoc_source_then_conversion_is_gated(self):
+        """runD_r1's escape: write the memo with a heredoc, convert it."""
+        c = FakeClient("UNSAT")
+        g, inner = make_guard(c, self.tmp)
+        bash(g, "cat > memo.md << 'EOF'\n" + SHORT + "\nEOF")
+        out = bash(g, "python generate_from_md.py memo.md "
+                      "output/red-flag-memo.docx")
+        self.assertEqual(len(inner.calls), 1, "conversion must not run")
+        self.assertIn("executive summary", out.lower())
+
+    def test_writing_the_deliverable_directly_is_checked(self):
+        c = FakeClient("UNSAT")
+        g, inner = make_guard(c, self.tmp)
+        out = write(g, "output/red-flag-memo.docx", SHORT)
+        self.assertEqual(inner.calls, [])
+        self.assertIn("executive summary", out.lower())
+
+
+class TestFailureModes(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
 
     def test_outage_fails_closed(self):
         c = FakeClient(raises=True)
         g, inner = make_guard(c, self.tmp)
-        out = g.execute("write", json.dumps(
-            {"file_path": "memo_content.md", "content": COMPLIANT}))
-        self.assertEqual(inner.calls, [], "must not execute during outage")
+        write(g, "memo.md", COMPLIANT)
+        out = bash(g, "pandoc memo.md -o output/red-flag-memo.docx")
+        self.assertEqual(len(inner.calls), 1, "conversion must not run")
         self.assertIn("unavailable", out.lower())
 
     def test_action_text_states_only_computed_facts(self):
-        """A draft with no cleared section must never be described as
-        having one — the §6 lesson from the conduct demo."""
         c = FakeClient("SAT")
         g, _ = make_guard(c, self.tmp)
-        g.execute("write", json.dumps(
-            {"file_path": "memo_content.md", "content": SHORT_SUMMARY}))
+        write(g, "memo.md", SHORT)
+        bash(g, "pandoc memo.md -o output/red-flag-memo.docx")
         self.assertIn("executive summary is 3", c.actions[0])
-
-    def test_finish_consolidates_the_ledger(self):
-        """The whole run-teardown path, which only executes at the very end
-        of a real run. A wrong method name here (finish vs consolidate)
-        destroyed a complete 20-minute run before this test existed."""
-        c = FakeClient("SAT")
-        g, _ = make_guard(c, self.tmp)
-        g.execute("write", json.dumps(
-            {"file_path": "memo_content.md", "content": COMPLIANT}))
-        out = Path(self.tmp) / "ledger.json"
-        g.finish(out)
-        self.assertTrue(out.exists(), "consolidated ledger not written")
-        data = json.loads(out.read_text())
-        self.assertEqual(data["totals"]["SAT"], 1)
+        self.assertNotIn("is at least five", c.actions[0])
 
     def test_ledger_records_every_decision(self):
         c = FakeClient("SAT")
         g, _ = make_guard(c, self.tmp)
         g.execute("read", json.dumps({"file_path": "x"}))
-        g.execute("write", json.dumps(
-            {"file_path": "memo_content.md", "content": COMPLIANT}))
+        write(g, "memo.md", COMPLIANT)
+        bash(g, "pandoc memo.md -o output/red-flag-memo.docx")
         lines = [json.loads(l) for l in
                  open(Path(self.tmp) / "ledger.jsonl") if l.strip()]
-        self.assertEqual([e["result"] for e in lines], ["SKIPPED", "SAT"])
-        self.assertEqual(lines[1]["check_id"], "chk-1")
+        self.assertEqual([e["result"] for e in lines],
+                         ["SKIPPED", "SKIPPED", "SAT"])
+        self.assertEqual(lines[-1]["check_id"], "chk-1")
+
+    def test_finish_consolidates_the_ledger(self):
+        """Teardown only runs at the end of a real run; a wrong method name
+        here destroyed a complete 20-minute run before this existed."""
+        c = FakeClient("SAT")
+        g, _ = make_guard(c, self.tmp)
+        write(g, "memo.md", COMPLIANT)
+        out = Path(self.tmp) / "ledger.json"
+        g.finish(out)
+        self.assertTrue(out.exists())
+        self.assertIn("totals", json.loads(out.read_text()))
 
 
 if __name__ == "__main__":

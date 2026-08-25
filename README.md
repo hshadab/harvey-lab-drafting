@@ -90,21 +90,38 @@ have made the claim false:
    run into the next section's `1.`, counting four where there were three.
    A numbered list must be **consecutively numbered** to continue.
 
-## Where it intercepts
+## Where it intercepts — by destination, not by content
 
-The agent does not write `red-flag-memo.docx` directly — it writes
-markdown and converts with `generate_from_md.py`. So a write is governed
-whenever it carries memo content, whatever the filename, and `bash` is
-governed on two pathways: a heredoc carrying the memo, and any command
-producing a deliverable (permitted only after a compliant draft has been
-approved).
+The deliverable is a known filename, and it comes into existence exactly
+one way: a converter reads a markdown source and writes the `.docx`. So:
 
-That second part was learned the hard way. In `runD_r1` the guard skipped
-`bash` entirely and the agent — blocked three times on `write` — wrote the
-memo with a heredoc and shipped it anyway. Same hole as
-[BATTLE-TEST-FINDINGS §6](https://github.com/hshadab/harvey/blob/main/BATTLE-TEST-FINDINGS.md)
-in the conduct demo: cited in this repo's own docstrings, and recreated
-regardless. `runD_r2` then tried both routes and was caught on each.
+* a write whose path **is** the deliverable — checked
+* a write to a markdown source — **recorded**, not checked; a source is
+  only consequential if something converts it
+* a command converting `SOURCE -> deliverable` — **the gate**. Permitted
+  only if that source's content meets the standard. A source the guard
+  never saw written is refused outright.
+
+Everything else is untouched, whatever it contains.
+
+**This replaced three versions that tried to recognise the memo from what
+it said** — long, mentions "red flag" and "diligence". Each misfired in a
+live run:
+
+* `runD_r1` — `bash` not governed at all; blocked three times on `write`,
+  the agent wrote the memo with a heredoc and shipped it. Same hole as
+  [BATTLE-TEST-FINDINGS §6](https://github.com/hshadab/harvey/blob/main/BATTLE-TEST-FINDINGS.md),
+  which this repo cites in its own docstrings and recreated anyway.
+* `runE_r1` (first) — refused the agent's 50KB xlsx-builder **eight
+  times**, because its openpyxl data strings contain "red flag" and
+  "diligence". The memo was already compliant; the guard simply stopped
+  the agent working.
+* `runE_r1` (second) — refused `response.md`, the agent's closing summary,
+  twice. Prose about red flags, never a deliverable.
+
+A file that never becomes a deliverable cannot violate a standard about
+deliverables. Detecting intent from vocabulary was the wrong idea three
+times before it was replaced with the destination test.
 
 ## On writing a rule that actually compiles
 

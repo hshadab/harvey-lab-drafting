@@ -49,24 +49,40 @@ from hook.drafting import EngagementConfig, check_draft, citeable_names
 from hook.ledger import Ledger
 from hook.preflight_client import PreflightClient, PreflightUnreachable
 
-# A write is a memo draft if it is long enough to be a memo and reads like
-# one. Length alone is not enough (a data dump would qualify); a marker
-# alone is not enough (a one-line note mentioning "memorandum" would).
-_DRAFT_MIN_CHARS = 1200
-_DRAFT_MARKERS = ("memorandum", "red flag", "diligence")
+# Governance is by DESTINATION, not by content.
+#
+# Three earlier versions tried to recognise the memo from what it said —
+# long, mentions "red flag" and "diligence" — and each misfired. runE_r1
+# refused the agent's 50KB xlsx-builder eight times because its openpyxl
+# data strings contain those words, and refused response.md twice because
+# it is prose about red flags. Both had already been established as not
+# the deliverable.
+#
+# The deliverable is a known filename. It comes into existence exactly one
+# way: a converter reads a markdown source and writes the .docx. So:
+#
+#   * a write whose path IS the deliverable            -> check the content
+#   * a write to a markdown file                       -> remember the content
+#   * a command converting SOURCE -> deliverable       -> permitted only if
+#                                                         SOURCE was approved
+#
+# Nothing else is governed, whatever it contains. A file that never becomes
+# a deliverable cannot violate a standard about deliverables.
 
-# File extensions a prose deliverable can live in. A heredoc redirected to
-# anything else is not the memo, whatever words it contains.
-_DOC_SUFFIXES = (".md", ".markdown", ".txt", ".docx", ".rst")
+# `... generate_from_md.py SRC OUT`, `pandoc SRC -o OUT`, `... SRC > OUT`.
+_CONVERSION = re.compile(
+    r"(?P<src>[^\s'\";|&]+\.(?:md|markdown|txt))"      # the source file
+    r"(?:\s+(?:-o|--output)?\s*)"                       # optional -o
+    r"(?P<out>[^\s'\";|&]+\.docx)"                     # the deliverable
+    r"|(?P<out2>[^\s'\";|&]+\.docx)[^\n]*?"
+    r"(?P<src2>[^\s'\";|&]+\.(?:md|markdown|txt))",
+    re.I)
 
-# Heredoc redirect: `cat > FILE << 'EOF'` / `cat << 'EOF' > FILE`.
-_HEREDOC = re.compile(
-    r"(?:>>?\s*(?P<f1>[^\s|;&]+)[^\n]*<<|<<[^\n]*?>>?\s*(?P<f2>[^\s|;&]+))")
-
-# Source code, however much legal vocabulary sits in its string literals.
-_LOOKS_LIKE_CODE = re.compile(
-    r"^\s*(?:import|from)\s+\w|^\s*def\s+\w+\s*\(|^\s*(?:class|@)\w",
-    re.M)
+# `cat > FILE << 'EOF' ... EOF` — captures the target and the body.
+_HEREDOC_WRITE = re.compile(
+    r">>?\s*(?P<target>[^\s|;&]+)\s*<<\s*'?\"?(?P<tag>\w+)'?\"?\n"
+    r"(?P<body>.*?)\n\s*(?P=tag)",
+    re.S)
 
 
 @dataclass
@@ -92,6 +108,9 @@ class DraftingGuard:
         # Set once a draft passes. Generating the deliverable is permitted
         # only after this, so the conversion step cannot outrun the check.
         self._approved_draft = False
+        # Markdown sources seen this run, by basename. A conversion is
+        # checked against the content of its source.
+        self._sources: dict[str, str] = {}
 
     def __getattr__(self, name):
         # Everything not overridden here is LAB's own behaviour.
@@ -107,37 +126,13 @@ class DraftingGuard:
 
     # ---- what counts as a governed action ------------------------------
 
-    def _is_draft(self, path: str, content: str) -> bool:
-        """Is this write carrying the deliverable memorandum?
-
-        Topic keywords alone are not enough. runE_r1 blocked the agent's
-        xlsx-tracker builder eight times: a 50KB Python heredoc whose
-        openpyxl data strings contain "red flag" and "diligence", which
-        this classifier read as a memo with no executive summary. The
-        agent had already produced a compliant memo and simply could not
-        get on with its other work.
-
-        So code is excluded outright, and a heredoc counts only when it is
-        redirected into a prose document.
-        """
+    def _is_deliverable(self, path: str) -> bool:
         base = Path(path).name.lower()
-        if any(base == d.lower() for d in self._cfg.deliverable_names):
-            return True
-        if len(content) < _DRAFT_MIN_CHARS:
-            return False
-        if _LOOKS_LIKE_CODE.search(content):
-            return False
-        low = content.lower()
-        if sum(m in low for m in _DRAFT_MARKERS) < 2:
-            return False
-        if path:                       # a write tool call — path decides
-            return Path(path).suffix.lower() in _DOC_SUFFIXES or not Path(path).suffix
-        # a bash command — the heredoc target decides
-        m = _HEREDOC.search(content)
-        if not m:
-            return False
-        target = (m.group("f1") or m.group("f2") or "").strip("'\"")
-        return Path(target).suffix.lower() in _DOC_SUFFIXES
+        return any(base == d.lower() for d in self._cfg.deliverable_names)
+
+    @staticmethod
+    def _is_source(path: str) -> bool:
+        return Path(path).suffix.lower() in (".md", ".markdown", ".txt")
 
     # ---- the seam -------------------------------------------------------
 
@@ -162,71 +157,85 @@ class DraftingGuard:
         path = args.get("file_path") or args.get("path") or ""
         content = args.get("content") or args.get("new_string") or ""
 
-        if not self._is_draft(path, content):
+        # Writing the deliverable itself: check it.
+        if self._is_deliverable(path):
+            findings = check_draft(content, self._cfg.engagement,
+                                   self._doc_names)
+            return self._govern(findings, f"{tool_name}: {path}", path,
+                                tool_name, arguments)
+
+        # Writing a markdown source: remember it. Not governed — a source
+        # file is only consequential if something converts it, and that
+        # conversion is where the gate sits.
+        if self._is_source(path) and content:
+            self._sources[Path(path).name] = content
             self._ledger.record(
                 tool=tool_name, summary=f"{tool_name}: {path}",
                 action_text=f"{tool_name}: {path}", result="SKIPPED",
-                detail="not the deliverable memorandum")
+                detail="source file recorded; checked if converted")
             return self._inner.execute(tool_name, arguments)
 
-        findings = check_draft(content, self._cfg.engagement, self._doc_names)
-        return self._govern(findings, f"{tool_name}: {path}", content,
-                            tool_name, arguments)
+        self._ledger.record(
+            tool=tool_name, summary=f"{tool_name}: {path}",
+            action_text=f"{tool_name}: {path}", result="SKIPPED",
+            detail="does not become a deliverable")
+        return self._inner.execute(tool_name, arguments)
 
     def _bash(self, args: dict, tool_name, arguments) -> str:
-        """Govern shell commands that bring the deliverable into existence.
+        """Govern shell commands by what they produce.
 
-        The first version of this guard skipped bash entirely, reasoning
-        that "a standard is a property of the document, and the document
-        only exists at a write". That was wrong, and runD_r1 proved it in
-        the most direct way available: blocked three times on `write`, the
-        agent wrote the memo with a bash heredoc and converted it with
-        `generate_from_md.py`. Zero permitted writes, a finished .docx on
-        disk, and a ledger that looked respectable next to a deliverable
-        missing its issuing firm.
+        Two pathways, both keyed on destination rather than vocabulary:
 
-        That is the same hole as BATTLE-TEST-FINDINGS §6 in the conduct
-        demo — cited in this file's own docstring, and recreated anyway.
+        1. A heredoc writing a markdown source — recorded, not checked.
+           The source only matters if something converts it.
+        2. A command converting SOURCE -> deliverable — the gate. The
+           source's content is checked here, so the .docx cannot come into
+           existence from a draft that does not meet the standard.
 
-        Two pathways are governed here:
-          1. a heredoc carrying memo content -> check that content
-          2. a command producing a deliverable -> permitted only if a
-             compliant draft was approved earlier in this run. The content
-             lives in a sandbox file the guard cannot read, so the
-             precondition is the enforceable thing.
+        This is what closes the runD_r1 bypass without the false positives
+        that content-sniffing produced: a script or a summary file is
+        untouched because neither becomes a deliverable.
         """
         cmd = args.get("command") or ""
 
-        # (1) heredoc or redirect carrying the memo itself
-        if self._is_draft("", cmd):
-            findings = check_draft(cmd, self._cfg.engagement, self._doc_names)
-            return self._govern(findings, "bash (memo content)", cmd,
-                                tool_name, arguments)
+        # (1) heredoc writing a source file — record it
+        for m in _HEREDOC_WRITE.finditer(cmd):
+            target, body = m.group("target").strip("'\""), m.group("body")
+            if self._is_source(target):
+                self._sources[Path(target).name] = body
+            elif self._is_deliverable(target):
+                findings = check_draft(body, self._cfg.engagement,
+                                       self._doc_names)
+                return self._govern(findings, f"bash: write {target}",
+                                    target, tool_name, arguments)
 
-        # (2) a command that produces a deliverable file
-        names = [d.lower() for d in self._cfg.deliverable_names]
-        if any(n in cmd.lower() for n in names):
-            if self._approved_draft:
-                self._ledger.record(
-                    tool="bash", summary="bash: produce deliverable",
-                    action_text="bash: produce deliverable", result="SKIPPED",
-                    detail="a compliant draft was approved earlier in this run")
-                return self._inner.execute(tool_name, arguments)
-            self._ledger.record(
-                tool="bash", summary="bash: produce deliverable",
-                action_text=cmd[:400], result="UNSAT",
-                detail="deliverable generated without an approved draft")
-            return (
-                "Blocked by firm drafting standards: this command produces "
-                "the deliverable, but no draft meeting the issuing standard "
-                "has been approved in this run. Write the memorandum with "
-                "the `write` tool first so it can be checked, then generate "
-                "the deliverable from the approved draft.")
+        # (2) a conversion producing the deliverable — the gate
+        m = _CONVERSION.search(cmd)
+        if m:
+            src = (m.group("src") or m.group("src2") or "")
+            out = (m.group("out") or m.group("out2") or "")
+            if self._is_deliverable(out):
+                body = self._sources.get(Path(src).name)
+                if body is None:
+                    self._ledger.record(
+                        tool="bash", summary=f"bash: convert {src} -> {out}",
+                        action_text=cmd[:400], result="UNSAT",
+                        detail="source content unknown to the guard")
+                    return (
+                        "Blocked by firm drafting standard: this command "
+                        f"produces {out} from {src}, but {src} was never "
+                        "written through a channel this check can see. "
+                        "Write the memorandum with the `write` tool, then "
+                        "convert it.")
+                findings = check_draft(body, self._cfg.engagement,
+                                       self._doc_names)
+                return self._govern(findings, f"bash: convert {src} -> {out}",
+                                    out, tool_name, arguments)
 
         self._ledger.record(
             tool="bash", summary=f"bash: {cmd[:60]}",
             action_text=f"bash: {cmd[:60]}", result="SKIPPED",
-            detail="shell command not producing a governed document")
+            detail="does not produce a deliverable")
         return self._inner.execute(tool_name, arguments)
 
     def _govern(self, findings, summary, action_src, tool_name, arguments):
