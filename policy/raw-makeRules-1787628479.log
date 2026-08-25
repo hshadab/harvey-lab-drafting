@@ -1,0 +1,10 @@
+{"msg": "Validating policy...", "step": "1/6"}
+{"msg": "Formalizing rules...", "step": "2/6"}
+{"msg": "Building verification model... (0s elapsed)", "step": "3/6"}
+{"msg": "Building verification model... (10s elapsed)", "step": "3/6"}
+{"msg": "Building verification model... (20s elapsed)", "step": "3/6"}
+{"msg": "Building verification model... (30s elapsed)", "step": "3/6"}
+{"msg": "Generating rule-check scenarios (testing for ambiguous rules)...", "step": "4/6"}
+{"msg": "Verifying rule consistency...", "step": "5/6"}
+{"msg": "Finalizing...", "step": "6/6"}
+{"generation_time_ms": 57345, "next_steps": {"docs": "https://docs.icme.io/documentation/battle-testing-rules", "get_scenarios": "GET /v1/policy/c551a026-550e-4ced-be2d-a41143bc098b/scenarios", "run_tests": "POST /v1/runPolicyTests", "submit_feedback": "POST /v1/submitScenarioFeedback"}, "policy_id": "c551a026-550e-4ced-be2d-a41143bc098b", "rule_count": 5, "scenarios": 0, "status": "ok", "step": "done"}

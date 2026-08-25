@@ -1,17 +1,17 @@
 {
-  "policy_id": "b9fba4df-6f93-41a0-a8f6-4f198efe9bc0",
-  "compiled_at": "2026-08-25T02:45:24.673912+00:00",
-  "source_sha256": "f9afde60d3456e168b7b4fbd688e94b6c3440d683de6cc73276c1deb83358af9",
+  "policy_id": "c551a026-550e-4ced-be2d-a41143bc098b",
+  "compiled_at": "2026-08-25T03:28:57.560871+00:00",
+  "source_sha256": "e25ecc621ad223f3784aeecb5beb890e667b7c4c765094e4ba3ac8208a3ba4fa",
   "done_event": {
-    "generation_time_ms": 77424,
+    "generation_time_ms": 57345,
     "next_steps": {
       "docs": "https://docs.icme.io/documentation/battle-testing-rules",
-      "get_scenarios": "GET /v1/policy/b9fba4df-6f93-41a0-a8f6-4f198efe9bc0/scenarios",
+      "get_scenarios": "GET /v1/policy/c551a026-550e-4ced-be2d-a41143bc098b/scenarios",
       "run_tests": "POST /v1/runPolicyTests",
       "submit_feedback": "POST /v1/submitScenarioFeedback"
     },
-    "policy_id": "b9fba4df-6f93-41a0-a8f6-4f198efe9bc0",
-    "rule_count": 26,
+    "policy_id": "c551a026-550e-4ced-be2d-a41143bc098b",
+    "rule_count": 5,
     "scenarios": 0,
     "status": "ok",
     "step": "done"
