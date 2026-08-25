@@ -158,9 +158,9 @@ things:
 | `ESCAPED` | a non-conforming deliverable survived — **the guarantee failed; do not use this run** |
 
 Written to `final_state.json` and printed as a banner, on every exit path
-including a crash. `runH_r1`'s first attempt died on an Anthropic 400 and
-left a run directory with no verdict at all — the one state the contract
-does not allow. An unreadable deliverable is `ESCAPED`, never a clean
+including a crash. A run that died on an Anthropic 400 once left a run
+directory with no verdict at all — the one state the contract does not
+allow. An unreadable deliverable is `ESCAPED`, never a clean
 refusal.
 
 ## Blocking is the product; compliance is a bonus

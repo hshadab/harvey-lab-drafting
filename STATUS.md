@@ -70,10 +70,8 @@ permit. Reverting to heading-matching fails the suite.
 Re-measured across the 28 graded memos plus `runM_r1`: **24 blocks, zero
 false positives, 2 misses.**
 
-Runs `runG` through `runK` enforced the previous rule (C-036, executive
-summary) and are kept in `runs/` as history; their ledgers describe a
-standard this repo no longer enforces. Across all nine, zero reached
-`ESCAPED`.
+Runs that enforced the previous rule have been deleted; their ledgers
+described a standard this repo no longer has. They are in git history.
 
 What is measured for the current rule is offline, against the 28 graded
 memos: 23 true blocks, zero false blocks, 2 misses.
@@ -88,7 +86,7 @@ combination.
 
 * **Rule not stated** (`--no-briefing`) — the honest test of enforcement.
   The agent writes what it would naturally write, some of it fails, and
-  the gate has something to catch. `runG_r1` produced five blocks.
+  the gate has something to catch.
 * **Rule stated** — what a firm would actually do: state the house style
   rather than silently reject drafts. Produces few or no blocks.
 
@@ -111,17 +109,20 @@ enforcement works, so both arms use the unbriefed setting.
 
 ## Fixed (2026-08-25)
 
+Defects found in this system, in order. Each fix is mutation-checked:
+reverting it fails the suite.
+
 | Commit | Problem |
 |---|---|
-| `acecd04` | The rule governed `red-flag-tracker.xlsx`, which has no executive summary, so the guard destroyed a legitimate deliverable four times in one run |
+| `acecd04` | The rule governed `red-flag-tracker.xlsx`, a deliverable it could not apply to, and destroyed it four times in one run |
 | `626f356` | A revert failed silently and shipped a blocked memorandum while the ledger claimed it was stopped |
-| `4f974d5` | No verdict at the end of a run; the finding count depended on LAB's pandoc flags rather than on the document |
+| `4f974d5` | No verdict at the end of a run |
 | `f3dca86` | A crashed run left no verdict at all |
-| `184372e` | README predated all of the above |
-| `b540874` | An `edit` tool call testified about the fragment as if it were the document — false testimony, the §6 failure — and replaced the recorded source with the fragment; a bold `**Executive Summary**` heading (pandoc's rendering of a bold-paragraph heading) counted 0 findings and would have blocked a conforming memo; quoted conversion paths skipped the early gate |
+| `b540874` | An `edit` tool call testified about the fragment as if it were the document — false testimony — and replaced the recorded source with the fragment; quoted conversion paths skipped the early gate |
+| `f1a33b1` | Two standards in the repo, one of which enforced nothing |
+| `4b105dd` | The check matched the red flag's heading, so retitling an entry defeated it; confirmed live in `runM_r1` |
 
-81 offline tests. Each fix is mutation-checked: reverting it fails the
-suite.
+77 offline tests.
 
 ## Known limits
 
@@ -147,13 +148,8 @@ suite.
 * Most of the bugs above were found by running or probing the system,
   not by the pre-existing tests. Assume more exist.
 * The verdict-on-crash guarantee covers the runner process dying, not
-  the machine dying (`runI_r2`). A run directory without
+  the machine dying. A run directory without
   `final_state.json` is unverified — treat it as `ESCAPED`.
-* The rule counts an *enumeration*; an enumerated list of risk
-  categories satisfies it just as a list of findings does (`runI_r1`).
-  The stricter-rule-implies-criterion evidence in the README is about
-  memos that enumerate findings; category-list summaries are a shape
-  that evidence does not yet cover.
 
 ## Verifying a memo by hand
 
@@ -173,7 +169,7 @@ Anything printed is a cleared matter the memo raised as a red flag.
 ## Note for upstream
 
 LAB's Anthropic adapter does not use prompt caching, and runs re-send the
-document set on every turn — `runG_r1` was 6.5M input tokens against 31K
+document set on every turn — one recorded run was 6.5M input tokens against 31K
 output. Enabling caching would cut that substantially with identical
 results. Not applied here: this demo's claim is zero modifications to
 `harvey-labs`.
