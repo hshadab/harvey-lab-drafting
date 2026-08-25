@@ -50,32 +50,52 @@ rather than its body is what produced zero false positives.
 
 ## Results
 
-`runN_r1` (sonnet-4-6, unbriefed) — **`DELIVERED`, and LAB's judge passes
-C-032.** The first run where this rule holds end to end.
+`runR_r1` (sonnet-4-6, unbriefed) — **`DELIVERED`, and LAB's judge
+passes C-032.** The reference run: current code, current rule, verified
+three ways.
 
-| seq | verdict | route |
-|---|---|---|
-| 21, 24 | `UNSAT` | pre-check on the conversion command |
-| **38, 41** | `UNSAT` | **artifact verification of the produced `.docx`** |
-| 44 | `SAT` | conforming memorandum, delivered |
+Four blocks, two passes, all six on the finished `.docx`:
 
-Entries 38 and 41 are the ones that matter: a `.docx` got past the
-pre-check, and verification caught it on disk and reverted it. That is
-the route that defeated the previous version of the check.
+| seq | verdict |
+|---|---|
+| 22, 24 | `UNSAT` |
+| 27 | `SAT` |
+| 29, 33 | `UNSAT` |
+| 38 | `SAT` |
 
-Verified by hand rather than from the banner: 22 red flags, none about
-the Wyoming permit. The only "Wyoming" in the document is "Ramirez v.
-RES (D. Wyo.)" — a court district, which the pattern correctly ignores.
+The agent fixed the memo, then **raised the cleared matter again later in
+the run** and was blocked twice more. A one-time correction did not
+stick; a check that runs on every attempt did. That is the argument for a
+gate over an instruction, in one ledger.
 
-Overall 33/50. This rule is not meant to move the total; it governs one
-criterion, and that criterion went from FAIL to PASS.
+**Every block came through artifact verification, none through the
+command pre-check.** The agent produced the `.docx` first with LAB's own
+`generate_from_md.py` and then with a shell heredoc driving python-docx.
+The pre-check recognised neither — it recorded "does not produce a
+deliverable" for both — and the artifact check caught both. The set of
+ways to write a file is not enumerable; reading the finished file needs
+no list.
 
-**The same memo still fails C-033** — RF-16 flags the Consolidated
-Mining termination-for-convenience clause as a standalone MEDIUM red
-flag. That is a second distractor this repo deliberately does not
-enforce, because matching it produced 12 false positives on legitimate
-mentions. The run demonstrates the rule we enforce, not
-distractor-avoidance generally.
+**This run's checking went through the fail-closed fallback.** The
+delivered memo uses `RF-18 · HIGH · …` headings inside blockquotes, a
+shape `split_red_flags` does not recognise: it parses **zero** red-flag
+entries. Before that fallback existed, this document would have been
+approved without being examined at all — which is exactly how the
+earlier silent-mode run shipped a memo the judge rejected.
+
+Verified three ways: the guard's own verdict, a by-hand read of the
+`.docx` through LAB's parser (no mention of the Wyoming permit; the only
+"Casper" is an NLRB petition and a lease consent, both real findings),
+and LAB's judge — *"does not mention the Wyoming DEQ permit at all."*
+
+Overall 36/50. This rule governs one criterion, not the total.
+
+**Caveat worth stating.** The agent got there by switching tools, not by
+understanding the rule. Mid-run it recorded "the generate_from_md.py
+script seems to be intercepting" and "the blocking is coming from
+somewhere else" — it read the refusal as broken tooling even though the
+message named the Wyoming permit. Compliance came from the gate holding,
+not from the agent being persuaded.
 
 ### The check once failed open
 
