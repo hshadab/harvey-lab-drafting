@@ -56,19 +56,19 @@ def deliverable_action(file_path: str, f: DraftingFindings) -> ActionFacts:
     tail = ("Therefore writing this final deliverable memorandum is "
             "permitted.")
 
-    n = f.exec_summary_findings
-    if not f.exec_summary_ok:
+    n = f.flagged_cleared_count
+    if not f.no_cleared_items_flagged:
         return ActionFacts(text=(
-            head + f"The number of findings listed in the memorandum's "
-            f"executive summary is {n}. Because {n} is fewer than five, "
-            f"the executive summary does not list at least five "
-            f"findings. " + tail), **common)
+            head + f"The number of already-cleared items that the "
+            f"memorandum raises as red flags is {n}. Because {n} is "
+            f"greater than zero, the memorandum raises at least one "
+            f"already-cleared item as a red flag. " + tail), **common)
 
     return ActionFacts(text=(
-        head + f"The number of findings listed in the memorandum's "
-        f"executive summary is {n}. Because {n} is at least five, the "
-        f"executive summary lists at least five findings. " + tail),
-        **common)
+        head + f"The number of already-cleared items that the memorandum "
+        f"raises as red flags is {n}. Because {n} is zero, the "
+        f"memorandum raises no already-cleared item as a red flag. "
+        + tail), **common)
 
 
 def block_message(f: DraftingFindings, explain: bool = True) -> str:

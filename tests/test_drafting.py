@@ -14,6 +14,8 @@ CONFIG = EngagementConfig(
     client_names=("Sycamore Capital Partners", "Marcus Hahn"),
     firm_names=("Thornfield & Associates LLP", "Naomi Vance"),
     engagement_reference=("Project Ridgeline", "January 24, 2025"),
+    cleared_items=(("the Wyoming DEQ permit renewal",
+                    "WY-HW-2019-033|wyoming"),),
 )
 
 DOCS = {"cim.pdf", "cim", "quality-of-earnings.docx", "quality of earnings",
@@ -112,8 +114,10 @@ class TestExecSummary(unittest.TestCase):
             + described(3) + "\n")
         f = check_draft(head + FLAGS + CLEARED, CONFIG, DOCS)
         self.assertEqual(f.exec_summary_findings, 3)
-        self.assertFalse(f.compliant())
-        self.assertIn("executive summary", " ".join(f.missing()).lower())
+        self.assertFalse(f.exec_summary_ok)
+        # Advisory since the cleared-items prohibition replaced it: this
+        # memo raises no cleared item, so it is not blocked.
+        self.assertTrue(f.compliant())
 
     def test_separate_short_lists_do_not_add_up(self):
         """Summing lists across the section reached five on a memo whose
@@ -182,35 +186,46 @@ class TestCheckDraft(unittest.TestCase):
         self.assertTrue(f.compliant())
 
 
+WYOMING_FLAG = ("4. Wyoming DEQ permit WY-HW-2019-033 expiry\n"
+                "The permit expires 30 November 2024. See "
+                "environmental-permit-schedule.\n\n")
+
+
 class TestActionText(unittest.TestCase):
     def test_compliant_action_states_every_computed_fact(self):
         f = check_draft(GOOD_HEAD + FLAGS + CLEARED, CONFIG, DOCS)
         t = deliverable_action("red-flag-memo.docx", f).text
-        self.assertIn("number of findings listed in the memorandum's "
-                      "executive summary is", t)
-        self.assertIn("at least five", t)
+        self.assertIn("number of already-cleared items that the "
+                      "memorandum raises as red flags is 0", t)
         # Never states a citation claim: not enforced, so not testified to.
         self.assertNotIn("cite", t.lower())
 
     def test_one_pathway_per_action(self):
         """Non-compliant drafts frame exactly one failing rule, so the
         solver always has a single claim to test."""
-        f = check_draft(FLAGS, CONFIG, DOCS)
+        f = check_draft(GOOD_HEAD + FLAGS + WYOMING_FLAG, CONFIG, DOCS)
         t = deliverable_action("m.docx", f).text
-        self.assertIn("executive summary", t)
+        self.assertIn("already-cleared", t)
         self.assertNotIn("address block", t)
+        self.assertNotIn("executive summary", t)
 
     def test_never_asserts_an_uncomputed_property(self):
         """The §6 lesson from the conduct demo: no stock assurances."""
         f = check_draft(GOOD_HEAD + FLAGS, CONFIG, DOCS)  # no cleared section
         t = deliverable_action("m.docx", f).text
-        self.assertIn("executive summary is 6", t)
+        self.assertIn("raises as red flags is 0", t)
+        self.assertNotIn("cleared-items section", t)
 
     def test_block_message_names_the_defect(self):
-        f = check_draft(FLAGS, CONFIG, DOCS)
+        f = check_draft(GOOD_HEAD + FLAGS + WYOMING_FLAG, CONFIG, DOCS)
         msg = block_message(f)
-        self.assertIn("executive summary", msg)
-        self.assertIn("at least 5", msg)
+        self.assertIn("Wyoming", msg)
+        self.assertIn("cleared", msg)
+
+    def test_a_memo_raising_no_cleared_item_is_not_blocked(self):
+        f = check_draft(GOOD_HEAD + FLAGS + CLEARED, CONFIG, DOCS)
+        self.assertTrue(f.compliant())
+        self.assertEqual(f.flagged_cleared_items, [])
 
 
 if __name__ == "__main__":

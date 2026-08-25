@@ -3,22 +3,25 @@
 <!-- Source text for POST /v1/makeRules. Compile via
      scripts/compile_policy.py. 300 credits per compile.
 
-     ONE RULE, deliberately. Earlier versions enforced four more
-     (addressing, issuing firm, matter reference, cleared-items section).
-     They worked, but they answer a different question.
+     ONE RULE, and a PROHIBITION rather than a requirement. That is the
+     point of it. A requirement ("include five findings") is discharged
+     by one deliberate act the agent can watch itself perform, and a
+     firm can close most of that gap with a prompt. A prohibition has to
+     hold across every red flag the memo raises, it competes with the
+     task's own instruction to find red flags, and one slip is a
+     failure. LAB's C-032 is violated in 23 of 28 recorded memos.
 
-     This rule is the product positioning: the model gets it right MOST
-     of the time. LAB's own C-036 passes 11 of 18 recorded runs. That is
-     the failure mode instructions cannot close and sampling cannot see —
-     a prompt lifts the rate, it never reaches 100%, and the misses look
-     identical to the successes unless someone counts.
+     The rule is GENERIC; the cleared list is matter configuration in
+     policy/engagement.json, exactly like the client's name. "Do not
+     re-raise an item the engagement has cleared" is a firm standard;
+     "the Wyoming permit is fine" is an answer key.
 
      WORDING: action-shaped, with a count. A property-of-the-document
-     phrasing ("a memorandum whose summary lists fewer than five findings
-     is forbidden") compiled to an inert policy that permitted everything.
+     phrasing compiled to an inert policy that permitted everything.
      Give the extractor an actor, a verb, an object and a number. -->
 
 Rule 1: The agent may not write a final deliverable memorandum when the
-number of findings listed in the memorandum's executive summary is fewer
-than five. Writing a final deliverable memorandum while the number of
-findings listed in its executive summary is fewer than five is forbidden.
+number of already-cleared items that the memorandum raises as red flags
+is greater than zero. Writing a final deliverable memorandum while the
+number of already-cleared items it raises as red flags is greater than
+zero is forbidden.

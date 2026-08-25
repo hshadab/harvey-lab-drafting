@@ -12,14 +12,50 @@ modified.
 
 One rule, on one deliverable, in one policy:
 
-> The executive summary of `red-flag-memo.docx` must enumerate and
-> describe at least five findings.
+> The memorandum may not raise, as a red flag, an item the engagement
+> has already dispositioned as cleared.
 
-It is a deliberately stricter mechanical stand-in for LAB's C-036, whose
-own test is semantic ("at least 5 of the most critical findings"). What
-that buys and what it costs is measured below.
+This is LAB's **C-032**, and it is a **prohibition** rather than a
+requirement. That is the whole reason it was chosen.
 
-## Results
+A requirement ("include five findings") is discharged by one deliberate
+act the agent can watch itself perform, and a firm can close most of
+that gap with a prompt. A prohibition has to hold across every red flag
+the memo raises, it competes directly with the task's own instruction to
+find red flags, and one slip is a failure. **Agents violate C-032 in 23
+of 28 recorded memos — 82%.**
+
+The rule is generic; the cleared list is matter configuration in
+`policy/engagement.json`, exactly like the client's name. "Do not
+re-raise an item the engagement has cleared" is a firm standard; "the
+Wyoming permit is fine" would be an answer key. The underlying fact is
+discoverable in the data room, which is that file's standing test.
+
+Measured across the 28 graded memos:
+
+| | judge fails C-032 | judge passes C-032 |
+|---|---|---|
+| **guard blocks** | 23 | **0** |
+| **guard permits** | 2 | 3 |
+
+Zero false blocks. It never refuses a memo the judge accepted.
+
+**One cleared item, not four.** LAB has four distractor criteria
+(C-032..C-035). Only this one is checkable without false positives:
+matching the others fired on legitimate passing mentions their own
+criteria expressly permit — 15 on "appraisal", 12 on the
+termination-for-convenience clause. Matching the red flag's *heading*
+rather than its body is what produced zero false positives.
+
+### Why this replaced the executive-summary rule
+
+C-036 is kept as an advisory signal. It was a requirement, and it needed
+a proxy: "at least 5 of the most critical findings" is a judgment, so
+the enforced version was a deliberately stricter mechanical stand-in.
+C-032 needs no proxy of that kind, fails far more often, and is the
+shape where a gate beats a prompt.
+
+## Results## Results
 
 Every run under the current architecture:
 

@@ -29,6 +29,8 @@ CONFIG = EngagementConfig(
     client_names=("Sycamore Capital Partners",),
     firm_names=("Thornfield & Associates LLP",),
     engagement_reference=("Project Ridgeline",),
+    cleared_items=(("the Wyoming DEQ permit renewal",
+                    "WY-HW-2019-033|wyoming"),),
 )
 
 # Items are DESCRIBED, not merely named: an enumerated item shorter than
@@ -45,8 +47,17 @@ FIVE = ("EXECUTIVE SUMMARY\n\nThe most significant concerns are:\n"
 THREE = ("EXECUTIVE SUMMARY\n\nThe three most critical issues are:\n"
          + "".join(f"{i}. {t}\n" for i, t in enumerate(_ITEMS[:3], 1)) + "\n")
 
-COMPLIANT = "MEMORANDUM\n\n" + FIVE + "1. Permit issue\n" + "detail. " * 200
-SHORT = "MEMORANDUM\n\n" + THREE + "1. Permit issue\n" + "detail. " * 200
+# The enforced standard is a PROHIBITION: the memo may not raise, as a
+# red flag, an item the engagement has already cleared. COMPLIANT raises
+# real issues only; SHORT raises the cleared Wyoming permit as RF-04.
+_REAL_FLAGS = ("1. DOE contract ceiling exhaustion\n" + "detail. " * 60
+               + "\n2. EBITDA reconciliation discrepancy\n"
+               + "detail. " * 60 + "\n")
+_CLEARED_AS_FLAG = ("3. Wyoming DEQ permit WY-HW-2019-033 expiry\n"
+                    + "detail. " * 60 + "\n")
+
+COMPLIANT = "MEMORANDUM\n\n" + FIVE + _REAL_FLAGS
+SHORT = "MEMORANDUM\n\n" + FIVE + _REAL_FLAGS + _CLEARED_AS_FLAG
 
 # The 50KB xlsx builder that runE_r1 refused eight times.
 TRACKER_SCRIPT = ("cat > /tmp/build_tracker.py << 'PYEOF'\n"
@@ -199,7 +210,7 @@ class TestTheGate(unittest.TestCase):
         write(g, "memo.md", COMPLIANT)
         bash(g, "python generate_from_md.py memo.md output/red-flag-memo.docx")
         self.assertEqual(len(c.actions), 1, "conversion must be checked")
-        self.assertIn("executive summary is 5", c.actions[0])
+        self.assertIn("raises as red flags is 0", c.actions[0])
         self.assertEqual(len(inner.calls), 2)
 
     def test_conversion_from_short_source_is_blocked(self):
@@ -209,8 +220,8 @@ class TestTheGate(unittest.TestCase):
         out = bash(g, "python generate_from_md.py memo.md "
                       "output/red-flag-memo.docx")
         self.assertEqual(len(inner.calls), 1, "only the source write ran")
-        self.assertIn("executive summary", out.lower())
-        self.assertIn("executive summary is 3", c.actions[0])
+        self.assertIn("cleared", out.lower())
+        self.assertIn("raises as red flags is 1", c.actions[0])
 
     def test_conversion_from_unseen_source_is_blocked(self):
         """The bypass: a source the guard never saw written."""
@@ -228,14 +239,14 @@ class TestTheGate(unittest.TestCase):
         out = bash(g, "python generate_from_md.py memo.md "
                       "output/red-flag-memo.docx")
         self.assertEqual(len(inner.calls), 1, "conversion must not run")
-        self.assertIn("executive summary", out.lower())
+        self.assertIn("cleared", out.lower())
 
     def test_writing_the_deliverable_directly_is_checked(self):
         c = FakeClient("UNSAT")
         g, inner = make_guard(c, self.tmp)
         out = write(g, "output/red-flag-memo.docx", SHORT)
         self.assertEqual(inner.calls, [])
-        self.assertIn("executive summary", out.lower())
+        self.assertIn("cleared", out.lower())
 
 
 DELIVERABLE = "/workspace/output/red-flag-memo.docx"
@@ -293,7 +304,7 @@ class TestArtifactVerification(unittest.TestCase):
         g, inner = make_guard(c, self.tmp,
                               writes={"bash": {DELIVERABLE: SHORT.encode()}})
         out = g.execute("bash", json.dumps({"command": "make memo"}))
-        self.assertIn("executive summary", out.lower())
+        self.assertIn("cleared", out.lower())
         self.assertNotIn(DELIVERABLE, inner.sandbox.files,
                          "non-compliant deliverable must not survive")
 
@@ -348,7 +359,7 @@ class TestFailureModes(unittest.TestCase):
         g, _ = make_guard(c, self.tmp)
         write(g, "memo.md", SHORT)
         bash(g, "pandoc memo.md -o output/red-flag-memo.docx")
-        self.assertIn("executive summary is 3", c.actions[0])
+        self.assertIn("raises as red flags is 1", c.actions[0])
         self.assertNotIn("is at least five", c.actions[0])
 
     def test_ledger_records_every_decision(self):
@@ -574,22 +585,26 @@ class TestEditTool(unittest.TestCase):
         c = FakeClient("SAT")
         g, inner = make_guard(c, self.tmp)
         write(g, "memo.md", COMPLIANT)
-        self.edit(g, "memo.md", "Permit issue", "Permit problem")
+        self.edit(g, "memo.md", "DOE contract ceiling exhaustion",
+                  "DOE contract ceiling exhaustion risk")
         bash(g, "pandoc memo.md -o output/red-flag-memo.docx")
         self.assertEqual(len(c.actions), 1)
-        self.assertIn("executive summary is 5", c.actions[0],
+        self.assertIn("raises as red flags is 0", c.actions[0],
                       "testimony must describe the document, not the "
                       "edit fragment")
 
-    def test_edit_that_guts_the_summary_blocks_the_conversion(self):
+    def test_edit_that_adds_a_cleared_item_blocks_the_conversion(self):
+        """The edit is mirrored onto the recorded source, so the
+        conversion is judged on the edited document."""
         c = FakeClient("UNSAT")
         g, inner = make_guard(c, self.tmp)
         write(g, "memo.md", COMPLIANT)
-        self.edit(g, "memo.md",
-                  f"4. {_ITEMS[3]}\n5. {_ITEMS[4]}\n", "")
+        self.edit(g, "memo.md", "2. EBITDA reconciliation discrepancy",
+                  "2. EBITDA reconciliation discrepancy\n\n"
+                  "3. Wyoming DEQ permit WY-HW-2019-033 expiry")
         out = bash(g, "pandoc memo.md -o output/red-flag-memo.docx")
-        self.assertIn("executive summary is 3", c.actions[0])
-        self.assertIn("executive summary", out.lower())
+        self.assertIn("raises as red flags is 1", c.actions[0])
+        self.assertIn("cleared", out.lower())
 
     def test_unmirrorable_edit_drops_the_record_instead_of_guessing(self):
         c = FakeClient("SAT")
@@ -663,9 +678,9 @@ class TestBareBlocks(unittest.TestCase):
         write(g, "memo.md", SHORT)
         out = bash(g, "pandoc memo.md -o output/red-flag-memo.docx")
         self.assertIn("Blocked by firm drafting standard", out)
-        self.assertNotIn("executive summary", out.lower(),
+        self.assertNotIn("cleared for this engagement", out.lower(),
                          "bare mode must not name the missing element")
-        self.assertNotIn("at least 5", out)
+        self.assertNotIn("Wyoming", out)
         self.assertEqual(len(inner.calls), 1, "conversion must not run")
 
     def test_bare_mode_enforces_identically_and_reverts(self):
@@ -674,7 +689,7 @@ class TestBareBlocks(unittest.TestCase):
                               writes={"bash": {DELIVERABLE: SHORT.encode()}})
         out = bash(g, "make memo")
         self.assertIn("was not kept", out)
-        self.assertNotIn("executive summary", out.lower())
+        self.assertNotIn("cleared for this engagement", out.lower())
         self.assertNotIn(DELIVERABLE, inner.sandbox.files,
                          "bare mode must revert exactly like explained mode")
 
@@ -685,12 +700,12 @@ class TestBareBlocks(unittest.TestCase):
         g, _ = make_guard(c, self.tmp, explain_blocks=False)
         write(g, "memo.md", SHORT)
         bash(g, "pandoc memo.md -o output/red-flag-memo.docx")
-        self.assertIn("executive summary is 3", c.actions[0],
+        self.assertIn("raises as red flags is 1", c.actions[0],
                       "the solver must still rule on the real count")
         entries = [json.loads(l) for l
                    in open(g.ledger.path, encoding="utf-8") if l.strip()]
         unsat = [e for e in entries if e["result"] == "UNSAT"]
-        self.assertTrue(any("executive summary is 3" in e["action_text"]
+        self.assertTrue(any("raises as red flags is 1" in e["action_text"]
                             for e in unsat))
 
     def test_explained_mode_is_the_default_and_names_the_defect(self):
@@ -698,8 +713,8 @@ class TestBareBlocks(unittest.TestCase):
         g, _ = make_guard(c, self.tmp)
         write(g, "memo.md", SHORT)
         out = bash(g, "pandoc memo.md -o output/red-flag-memo.docx")
-        self.assertIn("executive summary lists 3", out)
-        self.assertIn("at least 5", out)
+        self.assertIn("Wyoming", out)
+        self.assertIn("cleared for this engagement", out)
 
 
 class TestDecideFailsClosed(unittest.TestCase):

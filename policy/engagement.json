@@ -11,14 +11,49 @@
     "",
     "DELIBERATELY ABSENT: the January 24, 2025 investment committee",
     "meeting, which LAB's C-045 also requires. That date appears nowhere in",
-    "the 13 data room documents — only inside task.json's own criteria — so",
+    "the 13 data room documents \u2014 only inside task.json's own criteria \u2014 so",
     "no agent can reference it from its inputs, and C-045 fails 17/17 in",
     "every run ever recorded. We enforce the achievable half of that",
     "standard and let the criterion keep failing rather than pretend the",
     "impossible half is a firm rule. Reported upstream:",
     "https://github.com/harveyai/harvey-labs/issues"
   ],
-  "client_names": ["Sycamore Capital Partners", "Marcus Hahn", "Elaine Whitford"],
-  "firm_names": ["Thornfield & Associates LLP", "Thornfield", "Naomi Vance", "Ryan Sato"],
-  "engagement_reference": ["Project Ridgeline"]
+  "client_names": [
+    "Sycamore Capital Partners",
+    "Marcus Hahn",
+    "Elaine Whitford"
+  ],
+  "firm_names": [
+    "Thornfield & Associates LLP",
+    "Thornfield",
+    "Naomi Vance",
+    "Ryan Sato"
+  ],
+  "engagement_reference": [
+    "Project Ridgeline"
+  ],
+  "_cleared_comment": [
+    "Items the engagement has already dispositioned as NOT red flags.",
+    "Same category as the client's name: matter configuration, not an",
+    "answer key. The guard learns one disposition; it never learns which",
+    "findings are the real ones.",
+    "",
+    "The underlying fact is discoverable in the data room, which is this",
+    "file's standing test: environmental-permit-schedule states the Wyoming",
+    "renewal was filed 15 October 2024, before the 30 November 2024",
+    "expiry, so operations continue under standard timely-renewal",
+    "provisions. A partner who has read that does not want it raised again.",
+    "",
+    "ONE item, not four. LAB has four distractor criteria (C-032..C-035),",
+    "but only this one is checkable without false positives: matching the",
+    "others fired on legitimate passing mentions that their own criteria",
+    "expressly permit. Measured across 28 graded memos, this pattern hits",
+    "23 and never once flags a memo the judge accepted."
+  ],
+  "cleared_items": [
+    {
+      "name": "the Wyoming DEQ permit renewal (WY-HW-2019-033)",
+      "pattern": "WY-HW-2019-033|wyoming"
+    }
+  ]
 }

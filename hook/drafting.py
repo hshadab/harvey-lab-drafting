@@ -190,6 +190,14 @@ class EngagementConfig:
     client_names: tuple[str, ...]
     firm_names: tuple[str, ...]
     engagement_reference: tuple[str, ...] = ()
+    # Items the engagement has already dispositioned as NOT red flags.
+    # Each entry is (name, pattern). This is matter configuration in the
+    # same sense as the client's name: a partner who has reviewed the
+    # Wyoming renewal and cleared it does not want it raised again. It is
+    # not an answer key -- the guard learns one disposition, never which
+    # findings are the real ones, and the underlying fact is discoverable
+    # in the data room like every other value in this file.
+    cleared_items: tuple[tuple[str, str], ...] = ()
 
     @classmethod
     def from_dict(cls, d: dict) -> "EngagementConfig":
@@ -197,6 +205,8 @@ class EngagementConfig:
             client_names=tuple(d.get("client_names", ())),
             firm_names=tuple(d.get("firm_names", ())),
             engagement_reference=tuple(d.get("engagement_reference", ())),
+            cleared_items=tuple(
+                (c["name"], c["pattern"]) for c in d.get("cleared_items", ())),
         )
 
 
@@ -215,6 +225,8 @@ class DraftingFindings:
     # reviewedDataRoomDocuments, never the boolean derived from them.
     cleared_section_count: int = 0
     exec_summary_findings: int = 0
+    # Cleared items the memo nevertheless raises AS red flags.
+    flagged_cleared_items: list[str] = field(default_factory=list)
     client_name_count: int = 0
     firm_name_count: int = 0
     matter_reference_count: int = 0
@@ -222,6 +234,14 @@ class DraftingFindings:
     @property
     def uncited_count(self) -> int:
         return len(self.uncited_red_flags)
+
+    @property
+    def flagged_cleared_count(self) -> int:
+        return len(self.flagged_cleared_items)
+
+    @property
+    def no_cleared_items_flagged(self) -> bool:
+        return self.flagged_cleared_count == 0
 
     @property
     def addressed_ok(self) -> bool:
@@ -238,16 +258,26 @@ class DraftingFindings:
         the standard it claims to enforce would be the exact failure this
         project exists to avoid. Kept as an advisory signal only.
         """
-        # ONE enforced standard: the executive summary must list at least
-        # five findings (LAB C-036). Everything else this module computes —
-        # addressing, issuing firm, matter reference, cleared-items section,
-        # uncited red flags — is measured and reported but gates nothing.
-        # They were enforced in earlier versions and worked; they are kept
-        # as advisory signals because the demo now makes a single claim.
-        return self.exec_summary_ok
+        # ONE enforced standard: the memorandum may not raise, as a red
+        # flag, an item the engagement has already cleared (LAB C-032).
+        #
+        # This replaced the executive-summary rule (C-036), which is kept
+        # below as an advisory signal. The reason is the shape of the
+        # obligation, not its difficulty. C-036 is a REQUIREMENT --
+        # discharged by one deliberate act the agent can see itself
+        # perform -- and a firm can close most of that gap with a prompt.
+        # C-032 is a PROHIBITION: it must hold across every red flag the
+        # memo raises, it competes directly with the task's own
+        # instruction to find red flags, and one slip is a failure. Agents
+        # violate it in 23 of 28 recorded memos.
+        #
+        # Measured on those 28: this check agrees with LAB's judge on 26,
+        # with ZERO false positives -- it never calls an item flagged that
+        # the judge accepted.
+        return self.no_cleared_items_flagged
 
     @property
-    def exec_summary_ok(self) -> bool:
+    def exec_summary_ok(self) -> bool:      # advisory since C-032 replaced it
         return self.exec_summary_findings >= _MIN_EXEC_SUMMARY_FINDINGS
 
     def missing(self) -> list[str]:
@@ -255,11 +285,10 @@ class DraftingFindings:
         agent receives. Being specific here is what lets it fix the draft
         instead of guessing."""
         out = []
-        if not self.exec_summary_ok:
+        for name in self.flagged_cleared_items:
             out.append(
-                f"the executive summary lists {self.exec_summary_findings} "
-                f"finding(s); at least {_MIN_EXEC_SUMMARY_FINDINGS} must be "
-                f"listed")
+                f"{name} was reviewed and cleared for this engagement; "
+                f"the memorandum raises it as a red flag")
         return out
 
     def advisory(self) -> list[str]:
@@ -488,6 +517,34 @@ not investigate the environment, fix the executive summary.
 """
 
 
+def flagged_cleared_items(text: str,
+                          cleared: tuple[tuple[str, str], ...]) -> list[str]:
+    """Which already-cleared items the memo nevertheless raises AS red
+    flags.
+
+    Matches the red flag's HEADING, not its body. LAB's criteria permit
+    discussing a cleared item in passing -- C-033 allows the
+    termination-for-convenience clause "in the context of customer
+    concentration", C-032 allows explaining why the timely renewal is
+    fine -- and only forbid raising it as a red flag in its own right.
+    Body matching cannot tell those apart: across 28 graded memos it fired
+    on 15 legitimate mentions of "appraisal" and 12 of the TFC clause.
+    Heading matching produced ZERO false positives.
+
+    Cleared-items sections are already excluded by split_red_flags, so a
+    memo that lists the item under "Items reviewed and cleared" is not
+    raising it as a red flag and is not counted here.
+    """
+    hit: list[str] = []
+    for heading, _body in split_red_flags(text):
+        for name, pattern in cleared:
+            if name in hit:
+                continue
+            if re.search(pattern, heading, re.I):
+                hit.append(name)
+    return hit
+
+
 def check_draft(text: str, config: EngagementConfig,
                 doc_names: set[str]) -> DraftingFindings:
     """Compute every drafting fact the policy needs. Pure function: no
@@ -506,6 +563,7 @@ def check_draft(text: str, config: EngagementConfig,
     references_engagement = all(
         _norm(r) in low for r in config.engagement_reference)
 
+    cleared_flagged = flagged_cleared_items(text, config.cleared_items)
     uncited: list[str] = []
     flags = split_red_flags(text)
     for heading, block in flags:
@@ -525,6 +583,7 @@ def check_draft(text: str, config: EngagementConfig,
         uncited_red_flags=uncited,
         cleared_section_count=cleared_n,
         exec_summary_findings=exec_summary_findings(text),
+        flagged_cleared_items=cleared_flagged,
         client_name_count=sum(1 for n in config.client_names
                               if _norm(n) in head),
         firm_name_count=sum(1 for n in config.firm_names
