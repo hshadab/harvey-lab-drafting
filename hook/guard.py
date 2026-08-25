@@ -107,11 +107,6 @@ class GuardConfig:
     # executive summary, and reverted the tracker four times running. A
     # rule about memoranda has nothing to say about a spreadsheet.
     governed_deliverable: str = "red-flag-memo.docx"
-    # LAB's C-043 governs the tracker: "FAIL if more than two of these
-    # columns are missing". That criterion states its own list and its
-    # own threshold, so unlike the executive-summary rule it is enforced
-    # verbatim rather than through a stricter stand-in. Scoped to the
-    # tracker for the same reason Rule 1 is scoped to the memorandum.
     # Whether a block names the missing element. True is what a firm
     # would do; False is the demo's control arm — the gate alone, no
     # repair signal. Enforcement and the ledger are identical either way.

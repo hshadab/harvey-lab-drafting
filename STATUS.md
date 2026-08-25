@@ -197,14 +197,13 @@ combination.
   of what the agent does with the news. Expect thrash — two earlier
   runs read unexplained blocks as broken tooling and went off to strace
   pandoc; the deliverable stayed governed the whole time.
-* **Explained block** (default) — the refusal names the defect ("the
-  names the cleared matter it raised), so
-  the agent revises the memo and converges. This is the demo's product
-  arm.
+* **Explained block** (default) — the refusal names the cleared matter
+  the memo raised, so the agent revises the memo and converges. This is
+  the demo's product arm.
 
-The planned head-to-head is both arms unbriefed: same model, same task,
-same policy — one run shows blocking alone, the other shows
-block-and-repair. A run with zero blocks cannot demonstrate that
+The head-to-head above (the `runQ` pair) ran both arms unbriefed: same
+model, same task, same policy — one run shows blocking alone, the other
+shows block-and-repair. A run with zero blocks cannot demonstrate that
 enforcement works, so both arms use the unbriefed setting.
 
 ## Fixed (2026-08-25)
@@ -222,7 +221,7 @@ reverting it fails the suite.
 | `f1a33b1` | Two standards in the repo, one of which enforced nothing |
 | `4b105dd` | The check matched the red flag's heading, so retitling an entry defeated it; confirmed live in `runM_r1` |
 
-77 offline tests.
+80 offline tests.
 
 ## Known limits
 
@@ -247,9 +246,6 @@ reverting it fails the suite.
   cannot be read from here. Runs themselves work, so the key is valid.
 * Most of the bugs above were found by running or probing the system,
   not by the pre-existing tests. Assume more exist.
-* The verdict-on-crash guarantee covers the runner process dying, not
-  the machine dying. A run directory without
-  `final_state.json` is unverified — treat it as `ESCAPED`.
 
 ## Verifying a memo by hand
 
