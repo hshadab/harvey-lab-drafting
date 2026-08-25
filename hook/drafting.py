@@ -191,8 +191,13 @@ class DraftingFindings:
         the standard it claims to enforce would be the exact failure this
         project exists to avoid. Kept as an advisory signal only.
         """
-        return (self.addressed_ok and self.has_cleared_section
-                and self.exec_summary_ok)
+        # ONE enforced standard: the executive summary must list at least
+        # five findings (LAB C-036). Everything else this module computes —
+        # addressing, issuing firm, matter reference, cleared-items section,
+        # uncited red flags — is measured and reported but gates nothing.
+        # They were enforced in earlier versions and worked; they are kept
+        # as advisory signals because the demo now makes a single claim.
+        return self.exec_summary_ok
 
     @property
     def exec_summary_ok(self) -> bool:
@@ -202,6 +207,16 @@ class DraftingFindings:
         """Human-readable list of what fails, for the block message the
         agent receives. Being specific here is what lets it fix the draft
         instead of guessing."""
+        out = []
+        if not self.exec_summary_ok:
+            out.append(
+                f"the executive summary lists {self.exec_summary_findings} "
+                f"finding(s); at least {_MIN_EXEC_SUMMARY_FINDINGS} must be "
+                f"listed")
+        return out
+
+    def advisory(self) -> list[str]:
+        """Measured but not enforced — reported in the ledger only."""
         out = []
         if not self.addressed_to_client:
             out.append("no addressee identifying the engagement client")

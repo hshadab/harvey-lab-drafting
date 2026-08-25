@@ -37,6 +37,13 @@ COMPLIANT = (
 NO_CLEARED = COMPLIANT.split("Items reviewed and cleared")[0]
 assert len(NO_CLEARED) > 1200, "test draft too short to be governed"
 
+# A draft whose executive summary lists only three findings — the single
+# enforced standard is the one it violates.
+SHORT_SUMMARY = COMPLIANT.replace(
+    "4. Salt Lake City lease assignment consent never obtained.\n", "").replace(
+    "5. NLRB union election petition disclosed only in a footnote.\n", "").replace(
+    "6. Asbestos long-tail exposure against a blanket policy exclusion.\n", "")
+
 
 class FakeInner:
     """Stands in for LAB's ToolExecutor."""
@@ -156,10 +163,10 @@ class TestEnforcement(unittest.TestCase):
         c = FakeClient("UNSAT")
         g, inner = make_guard(c, self.tmp)
         out = g.execute("write", json.dumps(
-            {"file_path": "memo_content.md", "content": NO_CLEARED}))
+            {"file_path": "memo_content.md", "content": SHORT_SUMMARY}))
         self.assertEqual(inner.calls, [], "blocked write must not execute")
-        self.assertIn("cleared", out.lower())
-        self.assertIn("drafting standards", out.lower())
+        self.assertIn("executive summary", out.lower())
+        self.assertIn("drafting standard", out.lower())
 
     def test_sat_delegates_to_lab(self):
         c = FakeClient("SAT")
@@ -183,9 +190,8 @@ class TestEnforcement(unittest.TestCase):
         c = FakeClient("SAT")
         g, _ = make_guard(c, self.tmp)
         g.execute("write", json.dumps(
-            {"file_path": "memo_content.md", "content": NO_CLEARED}))
-        self.assertIn("cleared-items sections the memorandum contains is 0",
-                      c.actions[0])
+            {"file_path": "memo_content.md", "content": SHORT_SUMMARY}))
+        self.assertIn("executive summary is 3", c.actions[0])
 
     def test_finish_consolidates_the_ledger(self):
         """The whole run-teardown path, which only executes at the very end

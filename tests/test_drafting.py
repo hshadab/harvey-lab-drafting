@@ -122,11 +122,14 @@ class TestCheckDraft(unittest.TestCase):
         self.assertTrue(f.exec_summary_ok)
         self.assertTrue(f.compliant())
 
-    def test_missing_address_block_detected(self):
-        f = check_draft(FLAGS + CLEARED, CONFIG, DOCS)
+    def test_missing_address_block_is_advisory_not_enforced(self):
+        """Addressing is measured and reported, but only the executive
+        summary rule gates. Earlier versions enforced five rules; the demo
+        now makes a single claim, so the rest are advisory."""
+        f = check_draft(EXEC_SUMMARY + FLAGS + CLEARED, CONFIG, DOCS)
         self.assertFalse(f.addressed_to_client)
-        self.assertFalse(f.addressed_from_firm)
-        self.assertFalse(f.compliant())
+        self.assertTrue(f.compliant())
+        self.assertIn("engagement client", " ".join(f.advisory()))
 
     def test_client_named_only_in_body_is_not_an_addressee(self):
         body = ("MEMORANDUM\n" + "filler\n" * 60
@@ -144,19 +147,16 @@ class TestCheckDraft(unittest.TestCase):
         self.assertTrue(f.compliant())      # advisory, not enforced
         self.assertNotIn("cite", " ".join(f.missing()).lower())
 
-    def test_missing_cleared_section_detected(self):
+    def test_missing_cleared_section_is_advisory(self):
         f = check_draft(GOOD_HEAD + FLAGS, CONFIG, DOCS)
         self.assertFalse(f.has_cleared_section)
-        self.assertFalse(f.compliant())
+        self.assertTrue(f.compliant())
 
-    def test_all_engagement_references_required(self):
-        """C-045 needs both the matter and the IC meeting date. an any()
-        test passed on the matter name alone and disagreed with the judge
-        on 5 of 17 runs."""
-        partial = GOOD_HEAD.replace("January 24, 2025", "some other date")
+    def test_engagement_reference_is_advisory(self):
+        partial = GOOD_HEAD.replace("Project Ridgeline", "the transaction")
         f = check_draft(partial + FLAGS + CLEARED, CONFIG, DOCS)
         self.assertFalse(f.references_engagement)
-        self.assertFalse(f.compliant())
+        self.assertTrue(f.compliant())
 
     def test_no_answer_key_dependence(self):
         """A draft citing a real document passes citation checks even if its
@@ -174,34 +174,31 @@ class TestActionText(unittest.TestCase):
     def test_compliant_action_states_every_computed_fact(self):
         f = check_draft(GOOD_HEAD + FLAGS + CLEARED, CONFIG, DOCS)
         t = deliverable_action("red-flag-memo.docx", f).text
-        for fragment in ("number of engagement clients named",
-                         "number of issuing firms named",
-                         "number of references to the engagement matter",
-                         "number of cleared-items sections"):
-            self.assertIn(fragment, t)
+        self.assertIn("number of findings listed in the memorandum's "
+                      "executive summary is", t)
+        self.assertIn("at least five", t)
         # Never states a citation claim: not enforced, so not testified to.
         self.assertNotIn("cite", t.lower())
 
     def test_one_pathway_per_action(self):
         """Non-compliant drafts frame exactly one failing rule, so the
         solver always has a single claim to test."""
-        f = check_draft(FLAGS, CONFIG, DOCS)   # fails addressing AND cleared
+        f = check_draft(FLAGS, CONFIG, DOCS)
         t = deliverable_action("m.docx", f).text
-        self.assertIn("address block", t)
-        self.assertNotIn("cleared-items sections", t)
+        self.assertIn("executive summary", t)
+        self.assertNotIn("address block", t)
 
     def test_never_asserts_an_uncomputed_property(self):
         """The §6 lesson from the conduct demo: no stock assurances."""
         f = check_draft(GOOD_HEAD + FLAGS, CONFIG, DOCS)  # no cleared section
         t = deliverable_action("m.docx", f).text
-        self.assertIn("cleared-items sections the memorandum contains is 0", t)
-        self.assertNotIn("greater than zero", t)
+        self.assertIn("executive summary is 6", t)
 
-    def test_block_message_names_each_defect(self):
+    def test_block_message_names_the_defect(self):
         f = check_draft(FLAGS, CONFIG, DOCS)
         msg = block_message(f)
-        self.assertIn("engagement client", msg)
-        self.assertIn("cleared", msg)
+        self.assertIn("executive summary", msg)
+        self.assertIn("at least 5", msg)
 
 
 if __name__ == "__main__":

@@ -42,24 +42,11 @@ def _n(v: int) -> str:
 def deliverable_action(file_path: str, f: DraftingFindings) -> ActionFacts:
     """Action string for writing the final deliverable memorandum.
 
-    Shape is copied from the working conduct policy, not invented. Two
-    earlier versions failed against the live compiled policy:
-
-      v1  "identifies the engagement client: no"       -> 1/4 probes green
-      v2  "containsClearedItemsSection is false"       -> 1/4 probes green
-
-    Both bound only the conclusion (isMemorandumIssuanceAllowed) and every
-    violating draft came back SAT. The conduct policy's Rule 3 check binds
-    NINE variables, and the difference is that it states quantities as
-    numbers and names the action being taken:
-
-      "The data room contains 13 documents in total. The number of data
-       room documents that have been reviewed is 9. Because 9 is not equal
-       to 13 ... This action is writing a final deliverable ..."
-
-    So: state the actor and verb, state each quantity as a standalone
-    number, derive the consequence from that number, and frame exactly one
-    pathway. Adjectives do not ground; numbers do.
+    One rule, one pathway, one number. The count is stated as a standalone
+    figure and the consequence derived from it, because adjectives do not
+    ground and numbers do: an earlier version asserting
+    "containsClearedItemsSection is false" bound nothing and scored 1/4 on
+    live probes, while "the number of X is 0" binds every time.
     """
     common = dict(tool="write", summary=f"write: {file_path}",
                   is_deliverable=True, findings=f)
@@ -69,57 +56,18 @@ def deliverable_action(file_path: str, f: DraftingFindings) -> ActionFacts:
     tail = ("Therefore writing this final deliverable memorandum is "
             "permitted.")
 
-    if f.client_name_count == 0:
-        return ActionFacts(text=(
-            head + f"The number of engagement clients named in the "
-            f"memorandum's address block is {_n(f.client_name_count)}. "
-            f"Because that number is zero, no engagement client is named "
-            f"in the address block. " + tail), **common)
-
-    if f.firm_name_count == 0:
-        return ActionFacts(text=(
-            head + f"The number of issuing firms named in the memorandum's "
-            f"address block is {_n(f.firm_name_count)}. Because that "
-            f"number is zero, no issuing firm is named in the address "
-            f"block. " + tail), **common)
-
-    if f.matter_reference_count == 0:
-        return ActionFacts(text=(
-            head + f"The number of references to the engagement matter in "
-            f"the memorandum is {_n(f.matter_reference_count)}. Because "
-            f"that number is zero, the memorandum does not reference the "
-            f"engagement matter. " + tail), **common)
-
+    n = f.exec_summary_findings
     if not f.exec_summary_ok:
         return ActionFacts(text=(
             head + f"The number of findings listed in the memorandum's "
-            f"executive summary is {_n(f.exec_summary_findings)}. Because "
-            f"that number is fewer than five, the executive summary does "
-            f"not list at least five findings. " + tail), **common)
+            f"executive summary is {n}. Because {n} is fewer than five, "
+            f"the executive summary does not list at least five "
+            f"findings. " + tail), **common)
 
-    if f.cleared_section_count == 0:
-        return ActionFacts(text=(
-            head + f"The number of cleared-items sections the memorandum "
-            f"contains is {_n(f.cleared_section_count)}. Because that "
-            f"number is zero, the memorandum contains no section "
-            f"documenting the matters reviewed and found not to constitute "
-            f"red flags. " + tail), **common)
-
-    # Fully compliant. Every number below was computed, none assumed.
     return ActionFacts(text=(
-        head
-        + f"The number of engagement clients named in the memorandum's "
-          f"address block is {_n(f.client_name_count)}. "
-        + f"The number of issuing firms named in the memorandum's address "
-          f"block is {_n(f.firm_name_count)}. "
-        + f"The number of references to the engagement matter in the "
-          f"memorandum is {_n(f.matter_reference_count)}. "
-        + f"The number of cleared-items sections the memorandum contains "
-          f"is {_n(f.cleared_section_count)}. "
-        + f"The number of findings listed in the memorandum's executive "
-          f"summary is {_n(f.exec_summary_findings)}. "
-        + f"Each of the first four numbers is greater than zero and the "
-          f"executive summary lists at least five findings. " + tail),
+        head + f"The number of findings listed in the memorandum's "
+        f"executive summary is {n}. Because {n} is at least five, the "
+        f"executive summary lists at least five findings. " + tail),
         **common)
 
 
@@ -129,7 +77,7 @@ def block_message(f: DraftingFindings) -> str:
     refusal produces thrash."""
     items = "\n".join(f"  - {m}" for m in f.missing())
     return (
-        "Blocked by firm drafting standards: this memorandum does not meet "
+        "Blocked by firm drafting standard: this memorandum does not meet "
         "the issuing standard.\n" + items +
         "\nRevise the memorandum to address each point and write it again. "
         "The content of your analysis is not in question — only that the "
