@@ -40,20 +40,24 @@
     "",
     "The underlying fact is discoverable in the data room, which is this",
     "file's standing test: environmental-permit-schedule states the Wyoming",
-    "renewal was filed 15 October 2024, before the 30 November 2024",
-    "expiry, so operations continue under standard timely-renewal",
-    "provisions. A partner who has read that does not want it raised again.",
+    "renewal was filed 15 October 2024, before the 30 November 2024 expiry,",
+    "so operations continue under standard timely-renewal provisions.",
     "",
-    "ONE item, not four. LAB has four distractor criteria (C-032..C-035),",
-    "but only this one is checkable without false positives: matching the",
-    "others fired on legitimate passing mentions that their own criteria",
-    "expressly permit. Measured across 28 graded memos, this pattern hits",
-    "23 and never once flags a memo the judge accepted."
+    "The PATTERN carries its own precision. A bare place name is not",
+    "enough: 'Ramirez v. RES (D. Wyoming)' is a court, not a permit, and",
+    "matching it blocked a memo the judge passed. Requiring permit context",
+    "removes that. Across 28 graded memos plus runM_r1 this matches 24 with",
+    "zero false positives.",
+    "",
+    "ONE item, not four. LAB has four distractor criteria (C-032..C-035);",
+    "only this one is checkable without false positives. Matching the",
+    "others fired on legitimate passing mentions their own criteria",
+    "expressly permit."
   ],
   "cleared_items": [
     {
       "name": "the Wyoming DEQ permit renewal (WY-HW-2019-033)",
-      "pattern": "WY-HW-2019-033|wyoming"
+      "pattern": "WY-HW-2019-033|wyoming[^.\\n]{0,60}permit|permit[^.\\n]{0,60}wyoming|wyoming\\s+deq"
     }
   ]
 }

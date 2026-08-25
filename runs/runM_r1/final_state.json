@@ -1,0 +1,6 @@
+{
+  "state": "ESCAPED",
+  "deliverable": "red-flag-memo.docx",
+  "exec_summary_findings": 0,
+  "detail": "red-flag-memo.docx lists only 0 findings in its executive summary and is on disk anyway."
+}

@@ -191,3 +191,69 @@ class TestActionText(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 
+
+
+class TestClearedItemMatching(unittest.TestCase):
+    """The check must describe the ENTRY, not the name the agent gave it.
+
+    Both fixtures are lifted from real runs.
+    """
+
+    CLEARED = (("the Wyoming DEQ permit renewal (WY-HW-2019-033)",
+                r"WY-HW-2019-033|wyoming[^.\n]{0,60}permit"
+                r"|permit[^.\n]{0,60}wyoming|wyoming\s+deq"),)
+
+    # runM_r1: the guard blocked four times, then this shipped. The
+    # heading says "Casper Facility Permit" and never says Wyoming, so
+    # heading-matching passed it. LAB's judge failed C-032 on it.
+    RENAMED = """MEMORANDUM
+
+## RED FLAG 6 --- CDPHE Enforcement Action
+An unaccrued penalty exposure remains outstanding.
+
+## RED FLAG 7 --- Casper Facility Permit: Expired, Operating Under Timely Renewal
+The Wyoming hazardous waste permit for the Casper facility expired
+November 30, 2024. A renewal application was filed October 15, 2024.
+- Confirm Wyoming DEQ's written acknowledgment of the timely renewal.
+"""
+
+    # runI_r4: "D. Wyoming" is a federal court, not a permit. Matching the
+    # bare place name blocked this memo, which the judge passed.
+    COURT_ONLY = """MEMORANDUM
+
+## RF-004: Environmental Liability at Grand Junction Facility
+Ramirez v. RES (U.S. District Court, D. Wyoming) alleges occupational
+exposure to hazardous materials. Plaintiff seeks $4.8M in damages.
+"""
+
+    def test_a_renamed_entry_is_still_caught(self):
+        self.assertEqual(
+            flagged_cleared_items(self.RENAMED, self.CLEARED),
+            ["the Wyoming DEQ permit renewal (WY-HW-2019-033)"],
+            "a check the agent can defeat by retitling the entry is not "
+            "a check")
+
+    def test_an_unrelated_place_name_is_not_the_permit(self):
+        self.assertEqual(flagged_cleared_items(self.COURT_ONLY, self.CLEARED),
+                         [], "a court district is not a permit")
+
+    def test_mentioning_the_matter_outside_a_red_flag_is_allowed(self):
+        """C-032 expressly permits explaining why the renewal is fine."""
+        text = ("MEMORANDUM\n\n"
+                "## RF-001: EBITDA discrepancy\nDetail here.\n\n"
+                "Items reviewed and cleared\n"
+                "The Wyoming DEQ permit renewal was filed timely on 15 "
+                "October 2024, before the 30 November expiry, so operations "
+                "continue under standard renewal provisions and this is not "
+                "a red flag.\n")
+        self.assertEqual(flagged_cleared_items(text, self.CLEARED), [])
+
+    def test_the_permit_id_alone_is_enough(self):
+        """No place name at all, just the permit number."""
+        text = ("MEMORANDUM\n\n"
+                "## RF-001: EBITDA discrepancy\n"
+                "The CIM and the QofE pack disagree by $1.0M.\n\n"
+                "## RF-002: Permitting gap\n"
+                "Permit WY-HW-2019-033 lapsed and needs a closing "
+                "condition.\n")
+        self.assertEqual(len(flagged_cleared_items(text, self.CLEARED)), 1)

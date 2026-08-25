@@ -341,25 +341,37 @@ def flagged_cleared_items(text: str,
     """Which already-cleared items the memo nevertheless raises AS red
     flags.
 
-    Matches the red flag's HEADING, not its body. LAB's criteria permit
-    discussing a cleared item in passing -- C-033 allows the
-    termination-for-convenience clause "in the context of customer
-    concentration", C-032 allows explaining why the timely renewal is
-    fine -- and forbid only raising it as a red flag in its own right.
-    Body matching cannot tell those apart: across 28 graded memos it
-    fired on 15 legitimate mentions of "appraisal" and 12 of the TFC
-    clause. Heading matching produced ZERO false positives.
+    Matches the WHOLE red-flag entry, heading and body.
 
-    Cleared-items sections are already excluded by split_red_flags, so a
-    memo that lists the item under "Items reviewed and cleared" is not
-    raising it as a red flag and is not counted here.
+    An earlier version matched only the heading, and runM_r1 walked
+    through it: the guard blocked the memo four times, and the entry that
+    finally shipped was titled "RED FLAG 7 --- Casper Facility Permit"
+    while its body said "The Wyoming hazardous waste permit ... expired"
+    and recommended obtaining written acknowledgment from Wyoming DEQ.
+    LAB's judge failed C-032 on it. A check that keys on what the agent
+    chooses to call the entry is a check the agent controls.
+
+    The pattern must therefore carry its own precision, because a bare
+    place name appears in unrelated entries -- "Ramirez v. RES (D.
+    Wyoming)" is a court, not a permit, and matching it once blocked a
+    memo the judge passed. Requiring permit context rather than the bare
+    name removes that: across 28 graded memos plus runM_r1 this matches
+    24 with ZERO false positives.
+
+    What it deliberately does NOT do is forbid mentioning a cleared
+    matter. LAB's criteria permit that -- C-032 expressly allows
+    explaining why the timely renewal is fine. Only an entry that
+    split_red_flags returns is examined, and cleared-items sections are
+    excluded there, so discussing the matter under "Items reviewed and
+    cleared" is not raising it as a red flag.
     """
     hit: list[str] = []
-    for heading, _body in split_red_flags(text):
+    for heading, body in split_red_flags(text):
+        entry = f"{heading}\n{body}"
         for name, pattern in cleared:
             if name in hit:
                 continue
-            if re.search(pattern, heading, re.I):
+            if re.search(pattern, entry, re.I):
                 hit.append(name)
     return hit
 

@@ -50,7 +50,25 @@ rather than its body is what produced zero false positives.
 
 ## Results
 
-No run has yet been recorded against this rule. `runM_r1` is the first.
+`runM_r1` (sonnet, unbriefed) — **the guard blocked four times and then
+missed.** The entry that shipped was titled "RED FLAG 7 — Casper
+Facility Permit", never saying Wyoming in its heading, while its body
+said "The Wyoming hazardous waste permit … expired" and recommended
+obtaining written acknowledgment from Wyoming DEQ. LAB's judge failed
+C-032 on it.
+
+The check matched the heading, and the heading is the part the agent
+chooses. It now matches the whole entry. Whether the retitling was a
+response to being blocked or an incidental rewording is not something
+the transcript settles, and it does not matter: a check the agent can
+defeat by renaming is not a check.
+
+Both real documents are now regression fixtures — the renamed entry, and
+the memo where "Ramirez v. RES (D. Wyoming)" is a court rather than a
+permit. Reverting to heading-matching fails the suite.
+
+Re-measured across the 28 graded memos plus `runM_r1`: **24 blocks, zero
+false positives, 2 misses.**
 
 Runs `runG` through `runK` enforced the previous rule (C-036, executive
 summary) and are kept in `runs/` as history; their ledgers describe a
@@ -110,8 +128,11 @@ suite.
 * **One cleared item, not four.** LAB has four distractor criteria
   (C-032..C-035); only this one is checkable without false positives.
   Enforcing the others would block memos their own criteria permit.
-* The check matches a red flag's heading. A memo that raises a cleared
-  matter without naming it in the heading would not be caught.
+* The check matches a red flag's whole entry, and the pattern carries
+  its own precision. A memo that raises the cleared matter without using
+  any of its names — no "Wyoming", no permit number, no "DEQ" — would
+  still not be caught. Two of the 28 graded memos are misses for related
+  reasons.
 * Nine runs is still a small sample, and only four are scored by LAB's
   judge.
 * **One rule, out of fifty criteria.** This shows the mechanism works on
