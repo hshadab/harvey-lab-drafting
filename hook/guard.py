@@ -107,6 +107,10 @@ class GuardConfig:
     # executive summary, and reverted the tracker four times running. A
     # rule about memoranda has nothing to say about a spreadsheet.
     governed_deliverable: str = "red-flag-memo.docx"
+    # Whether a block names the missing element. True is what a firm
+    # would do; False is the demo's control arm — the gate alone, no
+    # repair signal. Enforcement and the ledger are identical either way.
+    explain_blocks: bool = True
     fail_closed: bool = True
     max_retries: int = 3
     retry_wait_s: float = 2.0
@@ -254,9 +258,12 @@ class DraftingGuard:
                                               before.get(path))
                 if alarm:
                     return alarm
-                return (at.block_message(findings) +
-                        f"\n\n{name} was not kept. Revise and produce it "
-                        f"again.")
+                msg = at.block_message(findings,
+                                       explain=self._cfg.explain_blocks)
+                tail = (f"\n\n{name} was not kept. Revise and produce it "
+                        f"again." if self._cfg.explain_blocks
+                        else f"\n\n{name} was not kept.")
+                return msg + tail
         return None
 
     def __getattr__(self, name):
@@ -487,7 +494,8 @@ class DraftingGuard:
         if pid:
             self._cfg.proof_queue.append(pid)
         if blocked:
-            return at.block_message(findings)
+            return at.block_message(findings,
+                                    explain=self._cfg.explain_blocks)
         self._approved_draft = True
         return self._inner.execute(tool_name, arguments)
 

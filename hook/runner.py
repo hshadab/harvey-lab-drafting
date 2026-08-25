@@ -57,6 +57,10 @@ def parse_args():
                    help="do not state the standard up front; the agent "
                         "learns it only from blocks (enforcement is "
                         "unchanged)")
+    p.add_argument("--bare-blocks", action="store_true",
+                   help="blocks do not name the missing element — the "
+                        "gate alone, no repair signal (enforcement and "
+                        "the ledger are unchanged)")
     return p.parse_args()
 
 
@@ -182,6 +186,7 @@ def main():
         documents_dir=task["docs_dir"],
         engagement=engagement,
         ledger_path=str(results_dir / "ledger.jsonl"),
+        explain_blocks=not args.bare_blocks,
     ))
     print(f"Drafting guard up: policy {args.policy_id}, "
           f"governs {guard.config.governed_deliverable} "
@@ -205,6 +210,8 @@ def main():
         "policy_id": args.policy_id, "engagement": args.engagement,
         "max_turns": args.max_turns, "temperature": args.temperature,
         "skills": skill_names,
+        "briefing": not args.no_briefing,
+        "explain_blocks": not args.bare_blocks,
         "started_at": datetime.now(timezone.utc).isoformat(),
     }, indent=2))
 

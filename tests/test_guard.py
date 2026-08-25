@@ -126,12 +126,12 @@ class FakeClient:
                 "verification_time_ms": 5}
 
 
-def make_guard(client, tmp, writes=None):
+def make_guard(client, tmp, writes=None, explain_blocks=True):
     inner = FakeInner(writes)
     g = DraftingGuard(inner, client, GuardConfig(
         policy_id="pol-1", documents_dir=str(tmp),
         engagement=CONFIG, ledger_path=str(Path(tmp) / "ledger.jsonl"),
-        max_retries=1, retry_wait_s=0))
+        max_retries=1, retry_wait_s=0, explain_blocks=explain_blocks))
     return g, inner
 
 
@@ -632,6 +632,62 @@ class TestConversionSpellings(unittest.TestCase):
         self.assertNotIn("->", c.actions[0],
                          "the command belongs in the ledger, not in the "
                          "action string the solver reasons over")
+
+
+class TestBareBlocks(unittest.TestCase):
+    """The demo's control arm: the gate alone, no repair signal.
+
+    Enforcement and the ledger are IDENTICAL to the explained mode — the
+    solver rules on the same facts and the receipt records them in full.
+    The only difference is what the agent is told.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+
+    def test_bare_block_does_not_name_the_defect(self):
+        c = FakeClient("UNSAT")
+        g, inner = make_guard(c, self.tmp, explain_blocks=False)
+        write(g, "memo.md", SHORT)
+        out = bash(g, "pandoc memo.md -o output/red-flag-memo.docx")
+        self.assertIn("Blocked by firm drafting standard", out)
+        self.assertNotIn("executive summary", out.lower(),
+                         "bare mode must not name the missing element")
+        self.assertNotIn("at least 5", out)
+        self.assertEqual(len(inner.calls), 1, "conversion must not run")
+
+    def test_bare_mode_enforces_identically_and_reverts(self):
+        c = FakeClient("UNSAT")
+        g, inner = make_guard(c, self.tmp, explain_blocks=False,
+                              writes={"bash": {DELIVERABLE: SHORT.encode()}})
+        out = bash(g, "make memo")
+        self.assertIn("was not kept", out)
+        self.assertNotIn("executive summary", out.lower())
+        self.assertNotIn(DELIVERABLE, inner.sandbox.files,
+                         "bare mode must revert exactly like explained mode")
+
+    def test_bare_mode_ledger_still_records_the_full_facts(self):
+        """What changes is what the AGENT is told; the receipt does not
+        get vaguer."""
+        c = FakeClient("UNSAT")
+        g, _ = make_guard(c, self.tmp, explain_blocks=False)
+        write(g, "memo.md", SHORT)
+        bash(g, "pandoc memo.md -o output/red-flag-memo.docx")
+        self.assertIn("executive summary is 3", c.actions[0],
+                      "the solver must still rule on the real count")
+        entries = [json.loads(l) for l
+                   in open(g.ledger.path, encoding="utf-8") if l.strip()]
+        unsat = [e for e in entries if e["result"] == "UNSAT"]
+        self.assertTrue(any("executive summary is 3" in e["action_text"]
+                            for e in unsat))
+
+    def test_explained_mode_is_the_default_and_names_the_defect(self):
+        c = FakeClient("UNSAT")
+        g, _ = make_guard(c, self.tmp)
+        write(g, "memo.md", SHORT)
+        out = bash(g, "pandoc memo.md -o output/red-flag-memo.docx")
+        self.assertIn("executive summary lists 3", out)
+        self.assertIn("at least 5", out)
 
 
 class TestDecideFailsClosed(unittest.TestCase):

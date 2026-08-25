@@ -29,9 +29,13 @@ The overall scores read FAIL because LAB gates on all 50 criteria. That
 number does not measure this system, which makes one claim about one
 criterion.
 
-## What the two configurations are for
+## What the configurations are for
 
-Both are kept; they answer different questions.
+Two independent knobs, each changing only what the agent is told —
+enforcement, the solver's facts, and the ledger are identical in every
+combination.
+
+**Before the work — is the rule stated up front?**
 
 * **Rule not stated** (`--no-briefing`) — the honest test of enforcement.
   The agent writes what it would naturally write, some of it fails, and
@@ -39,8 +43,22 @@ Both are kept; they answer different questions.
 * **Rule stated** — what a firm would actually do: state the house style
   rather than silently reject drafts. Produces few or no blocks.
 
-A run with zero blocks cannot demonstrate that enforcement works, so
-soak testing uses the unbriefed setting.
+**At a block — is the agent told why?**
+
+* **Bare block** (`--bare-blocks`) — the refusal names no missing
+  element. This is the control arm: it shows the gate holds regardless
+  of what the agent does with the news. Expect thrash — two earlier
+  runs read unexplained blocks as broken tooling and went off to strace
+  pandoc; the deliverable stayed governed the whole time.
+* **Explained block** (default) — the refusal names the defect ("the
+  executive summary lists 3 findings; at least 5 must be listed"), so
+  the agent revises the memo and converges. This is the demo's product
+  arm.
+
+The planned head-to-head is both arms unbriefed: same model, same task,
+same policy — one run shows blocking alone, the other shows
+block-and-repair. A run with zero blocks cannot demonstrate that
+enforcement works, so both arms use the unbriefed setting.
 
 ## In flight
 
@@ -80,7 +98,7 @@ have not started.
 | `184372e` | README predated all of the above |
 | `b540874` | An `edit` tool call testified about the fragment as if it were the document — false testimony, the §6 failure — and replaced the recorded source with the fragment; a bold `**Executive Summary**` heading (pandoc's rendering of a bold-paragraph heading) counted 0 findings and would have blocked a conforming memo; quoted conversion paths skipped the early gate |
 
-77 offline tests. Each fix is mutation-checked: reverting it fails the
+81 offline tests. Each fix is mutation-checked: reverting it fails the
 suite.
 
 ## Known limits
