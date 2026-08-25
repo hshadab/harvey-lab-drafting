@@ -257,3 +257,60 @@ exposure to hazardous materials. Plaintiff seeks $4.8M in damages.
                 "Permit WY-HW-2019-033 lapsed and needs a closing "
                 "condition.\n")
         self.assertEqual(len(flagged_cleared_items(text, self.CLEARED)), 1)
+
+
+class TestUnsegmentableMemo(unittest.TestCase):
+    """A check that approves whatever it cannot parse is not a check.
+
+    runP_r1 raised the cleared permit as "B. Wyoming Casper Permit
+    Expired ... [MEDIUM]" under a Section IV. split_red_flags recognised
+    no entries at all, so there was nothing to examine, nothing was
+    found, and the memo shipped with ZERO blocks -- while LAB's judge
+    failed C-032 on it. The check failed open.
+    """
+
+    CLEARED = TestClearedItemMatching.CLEARED
+
+    # The shape runP_r1 actually used.
+    SECTION_STYLE = """MEMORANDUM
+
+IV. ENVIRONMENTAL AND REGULATORY MATTERS
+
+**A. Grand Junction Contamination \\[HIGH\\]**
+The Phase II ESA is stale and vapour intrusion is unquantified.
+
+**B. Wyoming Casper Permit Expired; Operating Under Timely Renewal \\[MEDIUM\\]**
+The Casper facility's Wyoming DEQ hazardous waste permit (WY-HW-2019-033)
+expired November 30, 2024. This could be cited as a default under the
+credit agreement.
+"""
+
+    def test_an_unsegmentable_memo_is_still_checked(self):
+        from hook.drafting import split_red_flags
+        self.assertEqual(split_red_flags(self.SECTION_STYLE), [],
+                         "fixture must reproduce the unsegmentable shape")
+        self.assertEqual(
+            flagged_cleared_items(self.SECTION_STYLE, self.CLEARED),
+            ["the Wyoming DEQ permit renewal (WY-HW-2019-033)"],
+            "when the document cannot be split, check the whole document")
+
+    def test_the_fallback_still_spares_a_cleared_items_section(self):
+        """Explaining why the matter is not a concern stays permitted,
+        which is what C-032 option (b) allows."""
+        text = ("MEMORANDUM\n\nIV. MATTERS\n\n"
+                "**A. Grand Junction Contamination**\nStale ESA.\n\n"
+                "Items reviewed and cleared\n"
+                "The Wyoming DEQ permit renewal (WY-HW-2019-033) was filed "
+                "timely on 15 October 2024, before the 30 November expiry, "
+                "so operations continue under standard renewal provisions "
+                "and this is not a red flag.\n")
+        self.assertEqual(flagged_cleared_items(text, self.CLEARED), [])
+
+    def test_an_unsegmentable_memo_with_no_cleared_item_still_passes(self):
+        text = ("MEMORANDUM\n\nIV. MATTERS\n\n"
+                "**A. Grand Junction Contamination \\[HIGH\\]**\n"
+                "The Phase II ESA is stale.\n\n"
+                "**B. Ramirez v. RES (D. Wyoming) \\[MEDIUM\\]**\n"
+                "A personal injury action seeking $4.8M.\n")
+        self.assertEqual(flagged_cleared_items(text, self.CLEARED), [],
+                         "a court district is not a permit, fallback or not")

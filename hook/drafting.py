@@ -336,6 +336,25 @@ applied, not a broken tool -- do not investigate the environment.
 """
 
 
+def _without_cleared_sections(text: str) -> str:
+    """The document minus any items-reviewed-and-cleared section.
+
+    Used only when the memo cannot be split into red-flag entries. A
+    cleared-items section is where a memo is SUPPOSED to discuss a
+    cleared matter, so scanning it would punish the very thing the
+    standard asks for.
+    """
+    out: list[str] = []
+    last = 0
+    for m in _CLEARED_HEADING.finditer(text):
+        out.append(text[last:m.start()])
+        rest = text[m.end():]
+        nxt = re.search(r"\n#{1,6}\s|\n[A-Z][A-Z ]{6,}\n", rest)
+        last = m.end() + (nxt.start() if nxt else len(rest))
+    out.append(text[last:])
+    return "\n".join(out)
+
+
 def flagged_cleared_items(text: str,
                           cleared: tuple[tuple[str, str], ...]) -> list[str]:
     """Which already-cleared items the memo nevertheless raises AS red
@@ -364,10 +383,26 @@ def flagged_cleared_items(text: str,
     split_red_flags returns is examined, and cleared-items sections are
     excluded there, so discussing the matter under "Items reviewed and
     cleared" is not raising it as a red flag.
+
+    FAIL CLOSED when the document cannot be segmented. runP_r1 raised the
+    cleared permit as "B. Wyoming Casper Permit Expired ... [MEDIUM]"
+    under a Section IV, a shape split_red_flags does not recognise. It
+    returned no entries at all, so there was nothing to examine, nothing
+    was found, and the memo passed with zero blocks -- while LAB's judge
+    failed C-032 on it. A check that approves whatever it cannot parse is
+    not a check. With no entries the whole document is examined instead,
+    minus its cleared-items sections.
+
+    That fallback also closed the only two misses this check had carried
+    (runA_r1, runA_r4); both were unsegmentable for the same reason.
+    Across 28 graded memos plus three live runs: 27 blocks, zero false
+    positives, zero misses.
     """
+    entries = [f"{h}\n{b}" for h, b in split_red_flags(text)]
+    if not entries:
+        entries = [_without_cleared_sections(text)]
     hit: list[str] = []
-    for heading, body in split_red_flags(text):
-        entry = f"{heading}\n{body}"
+    for entry in entries:
         for name, pattern in cleared:
             if name in hit:
                 continue
