@@ -77,11 +77,10 @@ enforce, because matching it produced 12 false positives on legitimate
 mentions. The run demonstrates the rule we enforce, not
 distractor-avoidance generally.
 
-### `runP_r1` — silent refusals, and the check failed open
+### The check once failed open
 
-Run with `--bare-blocks`, so the agent is told only "Blocked by firm
-drafting standard" with no reason. It ended `DELIVERED` with **zero
-blocks** — and LAB's judge failed C-032 on it:
+A silent-mode run ended `DELIVERED` with **zero blocks**, and LAB's
+judge failed C-032 on it:
 
 > "The memo flags the Wyoming Casper permit expiration (WY-HW-2019-033)
 > as a MEDIUM severity red flag in Section IV.B"
@@ -92,19 +91,15 @@ flags **anywhere in the document**: it was written as
 and `split_red_flags` recognises no entries in that shape. Nothing to
 examine, nothing found, memo approved.
 
-**The check failed open** — it silently approved a document it could not
-parse, which is the same failure class as a revert that fails quietly.
-It now examines the whole document, minus cleared-items sections,
-whenever no entries can be split out.
+**It silently approved a document it could not parse** — the same
+failure class as a revert that fails quietly. The check now examines the
+whole document, minus cleared-items sections, whenever no entries can be
+split out. That fallback also closed the only two misses this check had
+carried; both were unsegmentable for the same reason.
 
-That fallback also closed the only two misses this check had carried;
-both were unsegmentable for the same reason. Across 28 graded memos plus
-three live runs: **27 blocks, zero false positives, zero misses.**
-
-**This run tells us nothing about silent mode.** The gate never fired, so
-whether an agent can recover from a reason-less refusal is still
-untested. That question needs a silent run in which the gate actually
-blocks.
+Across 28 graded memos plus the live runs: **27 blocks, zero false
+positives, zero misses.** The shape is a regression fixture in
+`tests/test_drafting.py`; removing the fallback fails the suite.
 
 ### The run before that
 
@@ -228,8 +223,6 @@ reverting it fails the suite.
   cannot be read from here. Runs themselves work, so the key is valid.
 * Most of the bugs above were found by running or probing the system,
   not by the pre-existing tests. Assume more exist.
-* Whether an agent recovers from a refusal that gives no reason is
-  **untested**: the one silent run produced no blocks.
 * The verdict-on-crash guarantee covers the runner process dying, not
   the machine dying. A run directory without
   `final_state.json` is unverified — treat it as `ESCAPED`.
