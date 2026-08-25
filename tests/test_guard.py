@@ -539,3 +539,31 @@ class TestStandardBriefing(unittest.TestCase):
                                   BAD_SUMMARY.encode()}})
         out = bash(g, "cp /tmp/x.docx $OUTPUT_DIR/red-flag-memo.docx")
         self.assertIn("was not kept", out)
+
+
+class TestVerdictIsAlwaysRecorded(unittest.TestCase):
+    """No run directory may lack a verdict.
+
+    runH_r1 died on an Anthropic 400 (out of credits) and left a run with
+    no final_state.json -- "silently absent", the one outcome the
+    conforming-or-visible-refusal contract does not allow.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+
+    def test_every_state_writes_a_file_and_a_banner(self):
+        for state in ("DELIVERED", "REFUSED", "ESCAPED"):
+            with self.subTest(state=state):
+                d = Path(tempfile.mkdtemp())
+                runner.write_verdict(d, {"state": state, "detail": "x",
+                                         "deliverable": "red-flag-memo.docx",
+                                         "exec_summary_findings": 0})
+                written = json.loads(
+                    (d / "final_state.json").read_text())
+                self.assertEqual(written["state"], state)
+
+    def test_unknown_state_is_not_silently_accepted(self):
+        with self.assertRaises(KeyError):
+            runner.write_verdict(Path(tempfile.mkdtemp()),
+                                 {"state": "PROBABLY_FINE", "detail": ""})

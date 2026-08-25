@@ -60,6 +60,22 @@ def parse_args():
     return p.parse_args()
 
 
+def write_verdict(results_dir, verdict: dict) -> None:
+    """Record the verdict and say it out loud. Both the clean path and the
+    crash path go through here, so no run directory lacks a verdict."""
+    (Path(results_dir) / "final_state.json").write_text(
+        json.dumps(verdict, indent=2))
+    banner = {
+        "DELIVERED": "DELIVERED: conforming to the firm standard.",
+        "REFUSED": "REFUSED: no conforming deliverable was produced. "
+                   "Nothing was issued.",
+        "ESCAPED": "ESCAPED: a NON-CONFORMING deliverable is on disk. "
+                   "The guarantee FAILED -- do not deliver this run.",
+    }[verdict["state"]]
+    rule = "=" * 72
+    print(f"\n{rule}\n  {banner}\n  {verdict['detail']}\n{rule}")
+
+
 def final_state(guard) -> dict:
     """What is actually on disk when the run ends, established by reading
     it — not inferred from the ledger.
@@ -202,11 +218,24 @@ def main():
             max_turns=args.max_turns,
             transcript_path=str(results_dir / "transcript.jsonl"),
         )
+    except BaseException as exc:
+        # A run that dies still has to say what is on disk. runH_r1 hit an
+        # Anthropic 400 (out of credits) and left a run directory with no
+        # verdict at all -- the one state the "conforming, or a visible
+        # refusal" contract does not allow. The traceback still surfaces;
+        # this just makes sure the artifact question is answered too.
+        verdict = final_state(guard)
+        verdict["detail"] = (f"run ended early ({type(exc).__name__}); "
+                             + verdict["detail"])
+        write_verdict(results_dir, verdict)
+        raise
     finally:
         # While the sandbox is still up: LAB parses .docx INSIDE it on
         # purpose, so the final verdict uses the guard's own reader
         # rather than parsing an agent-written binary on the host.
-        verdict = final_state(guard)
+        if verdict["state"] == "REFUSED" and \
+                verdict["detail"] == "run did not complete":
+            verdict = final_state(guard)
         sandbox.stop()
         guard.finish(results_dir / "ledger.json")
 
@@ -231,17 +260,8 @@ def main():
     # ended with a blocked file still on disk and nothing saying so, so
     # the final state is now established by inspecting the artifact
     # rather than inferred from the ledger.
-    (results_dir / "final_state.json").write_text(
-        json.dumps(verdict, indent=2))
-    banner = {
-        "DELIVERED": "DELIVERED: conforming to the firm standard.",
-        "REFUSED": "REFUSED: no conforming deliverable was produced. "
-                   "Nothing was issued.",
-        "ESCAPED": "ESCAPED: a NON-CONFORMING deliverable is on disk. "
-                   "The guarantee FAILED -- do not deliver this run.",
-    }[verdict["state"]]
-    rule = "=" * 72
-    print(f"\n{rule}\n  {banner}\n  {verdict['detail']}\n{rule}")
+    write_verdict(results_dir, verdict)
+
     print("\nScore it with LAB's own evaluator, e.g.:")
     print(f"  cd {args.lab_root} && uv run python -m evaluation.run_eval "
           f"--run-id <id> --task {args.task} --judge-model claude-sonnet-4-6")
