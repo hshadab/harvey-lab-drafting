@@ -155,6 +155,47 @@ class TestBashBypass(unittest.TestCase):
         self.assertEqual(len(inner.calls), 1)
 
 
+class TestFalsePositives(unittest.TestCase):
+    """runE_r1 blocked the agent's xlsx-tracker builder eight times. It had
+    already produced a compliant memo and could not get on with its work.
+    These pin the classifier so topic vocabulary alone never counts."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+
+    def test_python_heredoc_with_legal_vocabulary_is_not_a_draft(self):
+        script = ("cat > /tmp/build_tracker.py << 'PYEOF'\n"
+                  "import openpyxl\n"
+                  "from openpyxl.styles import Font\n"
+                  "rows = [\n"
+                  + "    ('red flag', 'diligence finding', 'Critical'),\n" * 60
+                  + "]\nPYEOF")
+        self.assertGreater(len(script), 1200)
+        c = FakeClient("UNSAT")
+        g, inner = make_guard(c, self.tmp)
+        g.execute("bash", json.dumps({"command": script}))
+        self.assertEqual(c.actions, [], "tracker script must not be checked")
+        self.assertEqual(len(inner.calls), 1, "tracker script must execute")
+
+    def test_inline_python_heredoc_is_not_a_draft(self):
+        script = ("python3 << 'PYEOF'\nimport openpyxl\n"
+                  + "# red flag diligence memorandum row\n" * 80 + "PYEOF")
+        c = FakeClient("UNSAT")
+        g, inner = make_guard(c, self.tmp)
+        g.execute("bash", json.dumps({"command": script}))
+        self.assertEqual(c.actions, [])
+        self.assertEqual(len(inner.calls), 1)
+
+    def test_markdown_heredoc_carrying_the_memo_is_still_a_draft(self):
+        """The fix must not reopen the bypass it sits next to."""
+        cmd = "cat > memo.md << 'EOF'\n" + SHORT_SUMMARY + "\nEOF"
+        c = FakeClient("UNSAT")
+        g, inner = make_guard(c, self.tmp)
+        out = g.execute("bash", json.dumps({"command": cmd}))
+        self.assertEqual(len(c.actions), 1, "memo heredoc must be checked")
+        self.assertEqual(inner.calls, [], "blocked memo must not execute")
+
+
 class TestEnforcement(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()

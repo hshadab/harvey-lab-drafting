@@ -42,6 +42,8 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import re
+
 from hook import action_text as at
 from hook.drafting import EngagementConfig, check_draft, citeable_names
 from hook.ledger import Ledger
@@ -52,6 +54,19 @@ from hook.preflight_client import PreflightClient, PreflightUnreachable
 # alone is not enough (a one-line note mentioning "memorandum" would).
 _DRAFT_MIN_CHARS = 1200
 _DRAFT_MARKERS = ("memorandum", "red flag", "diligence")
+
+# File extensions a prose deliverable can live in. A heredoc redirected to
+# anything else is not the memo, whatever words it contains.
+_DOC_SUFFIXES = (".md", ".markdown", ".txt", ".docx", ".rst")
+
+# Heredoc redirect: `cat > FILE << 'EOF'` / `cat << 'EOF' > FILE`.
+_HEREDOC = re.compile(
+    r"(?:>>?\s*(?P<f1>[^\s|;&]+)[^\n]*<<|<<[^\n]*?>>?\s*(?P<f2>[^\s|;&]+))")
+
+# Source code, however much legal vocabulary sits in its string literals.
+_LOOKS_LIKE_CODE = re.compile(
+    r"^\s*(?:import|from)\s+\w|^\s*def\s+\w+\s*\(|^\s*(?:class|@)\w",
+    re.M)
 
 
 @dataclass
@@ -93,13 +108,36 @@ class DraftingGuard:
     # ---- what counts as a governed action ------------------------------
 
     def _is_draft(self, path: str, content: str) -> bool:
+        """Is this write carrying the deliverable memorandum?
+
+        Topic keywords alone are not enough. runE_r1 blocked the agent's
+        xlsx-tracker builder eight times: a 50KB Python heredoc whose
+        openpyxl data strings contain "red flag" and "diligence", which
+        this classifier read as a memo with no executive summary. The
+        agent had already produced a compliant memo and simply could not
+        get on with its other work.
+
+        So code is excluded outright, and a heredoc counts only when it is
+        redirected into a prose document.
+        """
         base = Path(path).name.lower()
         if any(base == d.lower() for d in self._cfg.deliverable_names):
             return True
         if len(content) < _DRAFT_MIN_CHARS:
             return False
+        if _LOOKS_LIKE_CODE.search(content):
+            return False
         low = content.lower()
-        return sum(m in low for m in _DRAFT_MARKERS) >= 2
+        if sum(m in low for m in _DRAFT_MARKERS) < 2:
+            return False
+        if path:                       # a write tool call — path decides
+            return Path(path).suffix.lower() in _DOC_SUFFIXES or not Path(path).suffix
+        # a bash command — the heredoc target decides
+        m = _HEREDOC.search(content)
+        if not m:
+            return False
+        target = (m.group("f1") or m.group("f2") or "").strip("'\"")
+        return Path(target).suffix.lower() in _DOC_SUFFIXES
 
     # ---- the seam -------------------------------------------------------
 
