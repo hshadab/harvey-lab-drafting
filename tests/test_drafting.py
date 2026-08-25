@@ -294,3 +294,53 @@ class TestWrappedListItems(unittest.TestCase):
                 "## Detailed Findings\n")
         self.assertLess(exec_summary_findings(text), 5,
                         "an inline count in prose is not an enumeration")
+
+
+class TestCategoriesAreNotFindings(unittest.TestCase):
+    """A bulleted risk category is not a finding.
+
+    runI_r1's executive summary bulleted seven categories and numbered
+    three findings. The guard counted seven and passed it; LAB's judge
+    failed C-036, saying the summary "only calls out 3 as 'CRITICAL
+    SEVERITY FLAGS'". Counting bullets made the mechanical rule stop
+    implying the criterion it exists to imply.
+    """
+
+    RUNI_R1 = """# EXECUTIVE SUMMARY
+
+Twenty (20) material red flags have been identified across the following risk categories:
+
+• Revenue & Customer Concentration (3 flags)
+• Debt & Financing (1 flag)
+• Environmental & Regulatory (5 flags)
+• Litigation & Claims (3 flags)
+• Lease & Permit Issues (3 flags)
+• Compensation & Labor (2 flags)
+• Financial & Valuation (3 flags)
+
+CRITICAL SEVERITY FLAGS (3):
+1. DOE Contract Ceiling Exhaustion -- Potential $12.1M revenue decline
+2. Debt Change-of-Control Prepayment -- $39.2M+ cash requirement
+3. Salt Lake City Lease Assignment -- Risk of $16.2M revenue loss
+
+# CRITICAL ISSUES REQUIRING IMMEDIATE ATTENTION
+"""
+
+    def test_seven_categories_and_three_findings_counts_three(self):
+        self.assertEqual(exec_summary_findings(self.RUNI_R1), 3,
+                         "categories must not be counted as findings")
+
+    def test_that_memo_would_now_be_blocked(self):
+        self.assertLess(exec_summary_findings(self.RUNI_R1), 5)
+
+    def test_numbered_findings_still_count(self):
+        text = ("# Executive Summary\n\n"
+                "1. First finding.\n2. Second finding.\n3. Third finding.\n"
+                "4. Fourth finding.\n5. Fifth finding.\n\n# Detail\n")
+        self.assertEqual(exec_summary_findings(text), 5)
+
+    def test_bullets_alone_never_satisfy_the_standard(self):
+        text = ("# Executive Summary\n\n"
+                + "".join(f"• Category {i}\n" for i in range(1, 9))
+                + "\n# Detail\n")
+        self.assertEqual(exec_summary_findings(text), 0)

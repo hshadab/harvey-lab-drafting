@@ -16,7 +16,7 @@ Every run under the current architecture:
 |---|---|---|---|---|---|---|
 | `runG_r1` | sonnet-4-6 | no | 5 | `DELIVERED` | 5 | pass |
 | `runH_r1` | sonnet-4-6 | yes | 0 | `DELIVERED` | 15 | pass |
-| `runI_r1` | haiku-4-5 | no | 0 | `DELIVERED` | 7 | not scored |
+| `runI_r1` | haiku-4-5 | no | 0 | `DELIVERED` | 7 (categories) | **fail** |
 | `runI_r2` | haiku-4-5 | no | 3 | `REFUSED` | — | not scored |
 | `runI_r3` | haiku-4-5 | no | 2 | `REFUSED` | — | not scored |
 | `runI_r4` | haiku-4-5 | no | 3 | `DELIVERED` | 5 | pass |
@@ -34,30 +34,38 @@ Both still produced the tracker, which the rule does not govern.
 
 Overall LAB scores where measured: `runG_r1` 38/50, `runH_r1` 35/50.
 
-### One delivery is weaker evidence than it looks
+### The rule had a hole, and the judge found it
 
-`runI_r1` passed with 7 counted items, but they are risk **categories**,
-not findings:
+`runI_r1` was scored and **failed C-036**. The guard had passed it.
 
-    • Revenue & Customer Concentration (3 flags)
-    • Debt & Financing (1 flag)
-    • Environmental & Regulatory (5 flags)
-    ... 7 in total
+Its summary bulleted seven risk categories — "Revenue & Customer
+Concentration (3 flags)" — and numbered three actual findings. The guard
+counted seven. The judge counted three: *"the executive summary only
+calls out 3 as 'CRITICAL SEVERITY FLAGS'."*
 
-The actual findings list in that summary has three items, under
-"CRITICAL SEVERITY FLAGS (3)". The mechanical rule counts an
-enumeration, and an enumeration of categories satisfies it.
+This was a real defect in the rule, not the plumbing: a gate passing
+work it should have stopped. Fixed — bullets no longer count, only
+consecutively numbered items. `runI_r1`'s summary now counts 3 and would
+be blocked.
 
-This is the first plausible counterexample to the claim that the
-stricter mechanical rule implies C-036, and it is unscored. If LAB's
-judge fails `runI_r1` on C-036, the rule needs to distinguish a finding
-from a category. Scoring it is the informative next step, not a
-formality.
+Re-measured across all 25 scored memos with the corrected counter:
 
-C-036 has passed in every run where the guard passed the memo as
-conforming — four so far, against a historical unenforced rate of 11 of
-18. Only runs under the current architecture are kept in `runs/`; scores
-for the superseded ones remain in `harvey-labs/results/`.
+| | judge passes C-036 | judge fails C-036 |
+|---|---|---|
+| **guard passes** (5+ numbered) | 6 | **0** |
+| **guard blocks** (fewer) | 9 | 10 |
+
+Nine memos the judge accepted would be blocked by this rule. That is
+by design — the judge accepts a prose summary and a house style need
+not. What a house style may not do is pass work the rubric fails, and
+that column is now zero.
+
+The earlier "4 of 4" claim came from a sample of four memos and was too
+small to see this.
+
+Against a historical unenforced C-036 rate of 11 of 18. Only runs under
+the current architecture are kept in `runs/`; scores for the superseded
+ones remain in `harvey-labs/results/`.
 
 In `runH_r1` the LAB judge counted 15 findings and this repo's checker
 counted 15, independently, on the same document.

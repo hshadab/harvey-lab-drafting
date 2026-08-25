@@ -319,7 +319,8 @@ def exec_summary_findings(text: str) -> int:
     if end:
         body = body[:end.start()]
     body = body[:_EXEC_SUMMARY_MAX_CHARS]
-    # Longest CONTIGUOUS run of enumerated lines, not the total across the
+    # Longest CONTIGUOUS run of consecutively NUMBERED lines, not the
+    # total across the
     # section. runA's summary says "the three most critical issues are"
     # and lists three; summing separate lists reached five and would have
     # passed a memo the judge failed. The standard is "a list of at least
@@ -337,9 +338,18 @@ def exec_summary_findings(text: str) -> int:
                 n = int(num.group(1))
                 run = run + 1 if (prev_num is not None and n == prev_num + 1) else 1
                 prev_num = n
-            else:                    # bullets: contiguity is enough
-                run += 1
-                prev_num = None
+            else:
+                # Bullets do NOT count. runI_r1's summary bulleted seven
+                # risk CATEGORIES ("Revenue & Customer Concentration
+                # (3 flags)") and numbered only three actual findings.
+                # The guard passed it; LAB's judge failed C-036 on it,
+                # saying the summary "only calls out 3". A category names
+                # a group, not a finding, and counting bullets made the
+                # rule stop implying the criterion. Across all 25 scored
+                # memos, counting bullets gives one guard-pass the judge
+                # fails; numbered-only gives none.
+                run, prev_num = 0, None
+                continue
             best = max(best, run)
         elif line.strip():
             # An INDENTED line inside a list is the current item wrapping,

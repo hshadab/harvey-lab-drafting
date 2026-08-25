@@ -79,15 +79,47 @@ one naming five concrete items (`runA_r8`). Trying to reproduce a fuzzy
 grader is how an earlier attempt at C-039 went wrong.
 
 So the rule is deliberately **stricter and mechanical**: the executive
-summary must contain a *list* of at least five findings. Evidence that
-the stricter rule implies the criterion — of the 18 recorded memos, the
-four whose summaries list five or more pass C-036 **4 times out of 4**,
-while the fourteen that do not are a coin flip (7 pass, 7 fail).
+summary must contain a *numbered list* of at least five findings.
+
+Measured across all 25 scored memos:
+
+| | judge passes C-036 | judge fails C-036 |
+|---|---|---|
+| **guard passes** (5+ numbered) | 6 | **0** |
+| **guard blocks** (fewer) | 9 | 10 |
+
+The top-right cell is the one that matters. A memo the guard passes and
+the judge fails means the mechanical rule does not imply the criterion,
+and the whole design rests on it doing so. It is zero.
+
+The bottom-left cell — nine memos the judge accepted and this rule would
+block — is **by design, not error**. The judge accepts a prose summary;
+a house style need not. What a house style may not do is pass work the
+rubric fails.
+
+An earlier version of this section claimed 4-of-4 from a sample of four
+memos with 5+ counted. That sample was too small to see the failure
+below.
 
 A house style may be more specific than a rubric. It may not be
 unverifiable.
 
-Two counting bugs surfaced while establishing that, both of which would
+### The rule counted categories as findings, and the judge caught it
+
+`runI_r1`'s summary bulleted seven risk categories — "Revenue & Customer
+Concentration (3 flags)" — and numbered three actual findings. The guard
+counted seven and passed it. LAB's judge failed C-036: *"the executive
+summary only calls out 3 as 'CRITICAL SEVERITY FLAGS'."*
+
+A category names a group; it is not a finding. Bullets no longer count —
+only consecutively numbered items do. That is the difference between the
+6/0 table above and a table with a memo in the top-right cell.
+
+This is the failure mode the design is supposed to prevent, found in the
+rule itself rather than in the plumbing: not a crash, not an escape, but
+a gate passing something it should have stopped.
+
+Three counting bugs surfaced while establishing that, each of which would
 have made the claim false:
 
 1. **Summing separate lists.** `runA`'s summary says *"the three most
