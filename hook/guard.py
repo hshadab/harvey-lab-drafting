@@ -77,11 +77,13 @@ from hook.preflight_client import PreflightClient, PreflightUnreachable
 # a deliverable cannot violate a standard about deliverables.
 
 # `... generate_from_md.py SRC OUT`, `pandoc SRC -o OUT`, `... SRC > OUT`.
+# Paths may be quoted (`pandoc "memo.md" -o "out.docx"`); the quote sits
+# outside the filename character class, so it is skipped explicitly.
 _CONVERSION = re.compile(
-    r"(?P<src>[^\s'\";|&]+\.(?:md|markdown|txt))"      # the source file
-    r"(?:\s+(?:-o|--output)?\s*)"                       # optional -o
-    r"(?P<out>[^\s'\";|&]+\.docx)"                     # the deliverable
-    r"|(?P<out2>[^\s'\";|&]+\.docx)[^\n]*?"
+    r"(?P<src>[^\s'\";|&]+\.(?:md|markdown|txt))['\"]?"  # the source file
+    r"(?:\s+(?:-o|--output)?\s*)['\"]?"                   # optional -o
+    r"(?P<out>[^\s'\";|&]+\.docx)"                       # the deliverable
+    r"|(?P<out2>[^\s'\";|&]+\.docx)['\"]?[^\n]*?"
     r"(?P<src2>[^\s'\";|&]+\.(?:md|markdown|txt))",
     re.I)
 
@@ -124,8 +126,6 @@ class DraftingGuard:
         # Markdown sources seen this run, by basename. A conversion is
         # checked against the content of its source.
         self._sources: dict[str, str] = {}
-        # Last known-good bytes of each deliverable, for revert.
-        self._known: dict[str, bytes | None] = {}
 
     # ---- artifact verification (route-independent) ----------------------
 
@@ -257,7 +257,6 @@ class DraftingGuard:
                 return (at.block_message(findings) +
                         f"\n\n{name} was not kept. Revise and produce it "
                         f"again.")
-            self._known[path] = now
         return None
 
     def __getattr__(self, name):
@@ -326,7 +325,11 @@ class DraftingGuard:
             return self._inner.execute(tool_name, arguments)
 
         path = args.get("file_path") or args.get("path") or ""
-        content = args.get("content") or args.get("new_string") or ""
+
+        if tool_name == "edit":
+            return self._edit(args, path, tool_name, arguments)
+
+        content = args.get("content") or ""
 
         # Writing the deliverable itself: check it.
         if self._is_deliverable(path):
@@ -350,6 +353,56 @@ class DraftingGuard:
             tool=tool_name, summary=f"{tool_name}: {path}",
             action_text=f"{tool_name}: {path}", result="SKIPPED",
             detail="does not become a deliverable")
+        return self._inner.execute(tool_name, arguments)
+
+    def _edit(self, args: dict, path: str, tool_name, arguments) -> str:
+        """An edit carries a FRAGMENT, and a fragment must never be
+        testified about as if it were the document.
+
+        The first version fed new_string through the same path as a full
+        write: editing one word of a compliant memo produced the action
+        string "the number of findings listed in the executive summary is
+        0" — false testimony about a memo that lists five, the exact §6
+        failure this repo's own docstrings warn about. The solver would
+        have blocked a conforming document, and worse, the recorded source
+        was REPLACED by the fragment, so every later conversion was judged
+        against a one-line string.
+
+        So an edit is never pre-checked. On the deliverable itself,
+        _verify_artifacts reads the real resulting file after the call —
+        that is the guarantee, and it needs no guess about what the edit
+        produced. On a recorded source, the edit is applied to the record
+        (the same replacement the tool performs) so the record keeps
+        matching the file; an edit this method cannot mirror drops the
+        record instead, and a later conversion of that source is refused
+        as unseen rather than judged against stale text.
+        """
+        name = Path(path).name
+        old = args.get("old_string") or ""
+        new = args.get("new_string") or ""
+
+        if self._is_source(path) and name in self._sources:
+            stored = self._sources[name]
+            if old and old in stored:
+                self._sources[name] = stored.replace(old, new, 1)
+                detail = "source record updated with the edit"
+            else:
+                del self._sources[name]
+                detail = ("edit could not be mirrored; source record "
+                          "dropped — a conversion must rewrite it first")
+            self._ledger.record(
+                tool=tool_name, summary=f"{tool_name}: {path}",
+                action_text=f"{tool_name}: {path}", result="SKIPPED",
+                detail=detail)
+            return self._inner.execute(tool_name, arguments)
+
+        self._ledger.record(
+            tool=tool_name, summary=f"{tool_name}: {path}",
+            action_text=f"{tool_name}: {path}", result="SKIPPED",
+            detail=("edit carries a fragment, not a document; the result "
+                    "is verified after execution"
+                    if self._is_deliverable(path)
+                    else "does not become a deliverable"))
         return self._inner.execute(tool_name, arguments)
 
     def _bash(self, args: dict, tool_name, arguments) -> str:
@@ -410,7 +463,12 @@ class DraftingGuard:
         return self._inner.execute(tool_name, arguments)
 
     def _govern(self, findings, summary, action_src, tool_name, arguments):
-        facts = at.deliverable_action(summary, findings)
+        # Testimony names the deliverable, not the command that produced
+        # it: "bash: convert memo.md -> output/red-flag-memo.docx" is a
+        # ledger summary, and stuffing it into the action string made the
+        # solver reason about a sentence containing an arrow. The command
+        # stays in `summary` for the ledger.
+        facts = at.deliverable_action(Path(action_src).name, findings)
         res = self._checked(facts)
         if res is None:
             self._ledger.record(tool=facts.tool, summary=summary,

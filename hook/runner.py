@@ -92,9 +92,10 @@ def final_state(guard) -> dict:
                  failed and the run must not be used
     """
     from hook.drafting import check_draft
+    from hook.guard import _OUTPUT_PATH
 
     name = guard.config.governed_deliverable
-    path = f"/workspace/output/{name}"
+    path = f"{_OUTPUT_PATH}/{name}"
     try:
         if not guard.sandbox.exists(path):
             return {"state": "REFUSED", "deliverable": name,
@@ -183,7 +184,7 @@ def main():
         ledger_path=str(results_dir / "ledger.jsonl"),
     ))
     print(f"Drafting guard up: policy {args.policy_id}, "
-          f"governs {GuardConfig.governed_deliverable} "
+          f"governs {guard.config.governed_deliverable} "
           f"(of {deliverables}), "
           f"client={engagement.client_names[:1]} firm={engagement.firm_names[:1]}")
 
@@ -197,7 +198,7 @@ def main():
     # agent learns the rule only by being blocked; enforcement is
     # identical either way, since the guard recomputes every fact itself.
     if not args.no_briefing:
-        system_prompt += standard_briefing(GuardConfig.governed_deliverable)
+        system_prompt += standard_briefing(guard.config.governed_deliverable)
 
     (results_dir / "config.json").write_text(json.dumps({
         "model": args.model, "task": args.task, "run_id": args.run_id,
