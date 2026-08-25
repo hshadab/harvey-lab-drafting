@@ -1,6 +1,6 @@
 # harvey-lab-drafting — closing the gap a better prompt cannot close
 
-One rule, enforced before the memo is written, on a stock task from
+One rule, enforced on the finished document, on a stock task from
 Harvey's open-source Legal Agent Benchmark (LAB). LAB is unmodified. Not
 affiliated with or endorsed by Harvey.
 
@@ -176,19 +176,34 @@ refusal that produces nothing scores zero on the memo criteria and is
 still the correct outcome; an associate who cannot meet the standard
 hands the partner nothing, and the partner finds out.
 
-One consequence worth stating: a control that only ever blocks is
-indistinguishable from a broken control. Two runs showed the agent
-reading a block as broken tooling and going off to
-`strace` pandoc. So the standard is now stated in the system prompt
-before work begins, the way a firm briefs an associate rather than
-waiting to reject the draft.
+But a control that only ever refuses produces nothing, and the two
+properties are separable. Measured on a matched pair (same model, same
+policy, only the block message differing):
 
-**This changes what the agent knows, never what is enforced.** The guard
-recomputes every fact host-side and Preflight decides independently, so a
-run whose agent ignores the briefing is governed exactly as before.
-`--no-briefing` reproduces the old behaviour. The briefing interpolates
-`_MIN_EXEC_SUMMARY_FINDINGS`, so it cannot drift from the rule it
-describes.
+| the agent is told | blocks | outcome |
+|---|---|---|
+| nothing but "blocked" | 2 | `REFUSED` — no deliverable at all |
+| which cleared matter it raised | 1 | `DELIVERED`, judge passes C-032 |
+
+**The gate makes it safe; the explanation makes it useful.** Both runs
+were safe — neither issued a non-conforming memorandum, and enforcement
+did not depend on the agent understanding the refusal. Only the explained
+run produced work.
+
+So blocks explain by default, and they explain the **standard**, never
+the mechanism: the message names the matter a partner would name, never
+which words the check matches. That line matters — one run was blocked
+four times and the entry came back retitled "Casper Facility Permit"
+with identical content. What makes explaining safe is that the check
+reads the finished document, so a rename is caught anyway.
+
+`--bare-blocks` keeps the silent behaviour as a test, not a deployment
+mode. The briefing and the block message both interpolate the cleared
+list from `policy/engagement.json`, so neither can drift from the rule.
+
+**None of this changes what is enforced.** The guard recomputes every
+fact host-side and Preflight decides independently, so a run whose agent
+ignores the briefing is governed exactly as before.
 
 ## Where it intercepts — by destination, not by content
 
@@ -260,16 +275,56 @@ print(flagged_cleared_items(open('/tmp/m.md').read(), c.cleared_items))"
 ## Layout
 
     policy/controls.md       the single rule (source for makeRules)
-    policy/engagement.json   matter facts — advisory checks only
-    hook/drafting.py         host-side counts; the only place facts are made
-    hook/action_text.py      states the count as a number, one pathway
+    policy/engagement.json   matter facts, incl. the cleared-items list
+    policy/policy.json       the compiled policy id
+    hook/drafting.py         host-side facts; the only place facts are made
+    hook/action_text.py      states those facts as testimony, one pathway
     hook/guard.py            DraftingGuard — wraps LAB's ToolExecutor
     hook/runner.py           run entry point; final_state verdict
-    tests/                   81 offline tests, no network or API key
+    runs/                    recorded runs, ledgers and deliverables
+    tests/                   80 offline tests, no network or API key
                              (also run in CI: .github/workflows/tests.yml)
 
 ## Run the tests
 
+No network, no API key, no credits:
+
 ```bash
 python3 -m unittest discover -s tests -v
 ```
+
+## Run it yourself
+
+Needs a checkout of [harvey-labs](https://github.com/harveyai/harvey-labs),
+an Anthropic key for the agent, and an ICME key for the checks.
+`policy/policy.json` already holds a compiled policy id, so there is no
+need to spend the 300 credits recompiling.
+
+```bash
+export ANTHROPIC_API_KEY=...      # the agent
+export PREFLIGHT_API_KEY=...      # the checks
+
+PYTHONPATH=. uv run --project ../harvey-labs python -m hook.runner \
+    --lab-root ../harvey-labs \
+    --model anthropic/claude-haiku-4-5 \
+    --task corporate-ma/review-data-room-red-flag-review \
+    --policy-id "$(python3 -c "import json;print(json.load(open('policy/policy.json'))['policy_id'])")" \
+    --run-id myrun --no-briefing
+```
+
+The run ends by printing `DELIVERED`, `REFUSED` or `ESCAPED` and writing
+`runs/myrun/final_state.json`. `runs/myrun/ledger.md` is the receipt for
+every check.
+
+Flags worth knowing:
+
+* `--no-briefing` — do not state the standard in the system prompt. Use
+  this when testing enforcement; a briefed agent mostly complies and the
+  gate never fires.
+* `--bare-blocks` — refuse without saying why. A test of whether
+  enforcement holds when the agent is told nothing, not a deployment
+  mode: measured, the agent does not recover from it (see STATUS).
+
+A run costs roughly \$1 on `claude-haiku-4-5` and \$9 on
+`claude-sonnet-4-6`; almost all of it is LAB re-sending the document set
+each turn.
