@@ -4,6 +4,8 @@ One rule, enforced before the memo is written, on a stock task from
 Harvey's open-source Legal Agent Benchmark (LAB). LAB is unmodified. Not
 affiliated with or endorsed by Harvey.
 
+Current state, results, and known limits: **[STATUS.md](STATUS.md)**.
+
 ## The claim
 
 Harvey's own rubric, verbatim from
@@ -280,16 +282,10 @@ It fails silently, which is the dangerous part: a dead policy produces a
 clean-looking run in which nothing is enforced. Only probing a case that
 *should* block reveals it. Probe before every recorded run.
 
-## Prediction
-
-Recorded before the enforced runs, so it can be scored rather than
-rationalised: **C-036 goes from 11/18 to passing.** If it does not, the
-implication argument above is wrong and this line is the record of it.
-
 ## runE_r1 (2026-08-25): C-036 passed — but the gate did not cause it
 
 **40/50, the second-highest score of any run recorded here. C-036 passed,
-as predicted. And the prediction should not be counted as confirmed.**
+and this run should not be counted as evidence that enforcement worked.**
 
 The three governed checks tell the real story:
 
@@ -302,7 +298,7 @@ The three governed checks tell the real story:
 **The memo passed on its first attempt.** The agent listed five findings
 unprompted; enforcement had nothing to correct. So C-036 passing here is
 the agent complying on its own, not the gate changing an outcome — this
-run is consistent with the prediction and is not evidence for it.
+run shows the agent complying on its own, not the gate working.
 
 C-036 passes 61% of the time unenforced. A single enforced run landing in
 that 61% proves nothing. What would prove it is a run where the memo is
