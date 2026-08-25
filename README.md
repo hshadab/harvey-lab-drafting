@@ -110,7 +110,13 @@ each turn.
 
 ### Look at a recorded run instead — no keys, no cost
 
-Five runs are committed under `runs/`. The reference one is `runR_r1`:
+Five runs are committed under `runs/`. The reference one is `runR_r1`.
+
+One of the five, `runM_r1`, reports `ESCAPED` — a memo that got past the
+check. It is kept on purpose: it is the run that exposed a real defect
+(the check matched a red flag's heading, so retitling an entry defeated
+it), the fix is `4b105dd`, and the document is now a regression fixture.
+[STATUS.md](STATUS.md) has the detail. Every run since is clean.
 
 ```bash
 cat runs/runR_r1/final_state.json        # the verdict
