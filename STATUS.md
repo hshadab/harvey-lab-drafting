@@ -19,7 +19,7 @@ Every run under the current architecture:
 | `runI_r1` | haiku-4-5 | no | 0 | `DELIVERED` | 7 (categories) | **fail** |
 | `runI_r2` | haiku-4-5 | no | 3 | `REFUSED` | — | not scored |
 | `runI_r3` | haiku-4-5 | no | 2 | `REFUSED` | — | not scored |
-| `runI_r4` | haiku-4-5 | no | 3 | `DELIVERED` | 5 | pass |
+| `runI_r4` | haiku-4-5 | no | 3 | `DELIVERED` | 5 (bulleted) | pass |
 
 **13 blocks, 4 conforming deliveries, 2 refusals, 0 escapes.**
 
@@ -44,18 +44,30 @@ counted seven. The judge counted three: *"the executive summary only
 calls out 3 as 'CRITICAL SEVERITY FLAGS'."*
 
 This was a real defect in the rule, not the plumbing: a gate passing
-work it should have stopped. Fixed — bullets no longer count, only
-consecutively numbered items. `runI_r1`'s summary now counts 3 and would
-be blocked.
+work it should have stopped.
 
-Re-measured across all 25 scored memos with the corrected counter:
+The first fix was wrong. Counting only *numbered* items keys on marker
+shape, and `runI_r4` lists five genuine findings as dash bullets — that
+memo passes C-036, so numbered-only would have blocked real work.
+
+What separates a category from a finding is not the marker but whether
+the item is **described**. In `runI_r1` the categories run 26–43
+characters and the findings 71–79. An enumerated item now counts only
+with at least 50 characters of description, measured across its
+continuation lines so the result does not depend on how the parser
+wrapped the text. Any threshold from 40 to 120 measures identically on
+the scored memos.
+
+`runI_r1` now counts 3 and is blocked; `runI_r4` counts 5 and passes.
+
+Re-measured across all 26 scored memos:
 
 | | judge passes C-036 | judge fails C-036 |
 |---|---|---|
-| **guard passes** (5+ numbered) | 6 | **0** |
-| **guard blocks** (fewer) | 9 | 10 |
+| **guard passes** (5+ described) | 9 | **0** |
+| **guard blocks** (fewer) | 7 | 10 |
 
-Nine memos the judge accepted would be blocked by this rule. That is
+Seven memos the judge accepted would be blocked by this rule. That is
 by design — the judge accepts a prose summary and a house style need
 not. What a house style may not do is pass work the rubric fails, and
 that column is now zero.
@@ -127,8 +139,10 @@ suite.
   unverified, exactly like `ESCAPED`.** The crash handler covers the
   *process* dying; it cannot cover the machine dying or a run being
   killed. Do not read a missing verdict as a clean refusal.
-* The rule counts enumerated items and cannot tell a finding from a
-  category heading — see the `runI_r1` note above.
+* The rule separates a finding from a category by length (50 characters
+  of description). A memo listing five genuine findings more tersely
+  than that would be blocked. No memo in the 26 scored does this, so the
+  risk is unmeasured rather than ruled out.
 * `/v1/me` returns 403 on both auth headers, so the ICME credit balance
   cannot be read from here. Runs themselves work, so the key is valid.
 * Most of the bugs above were found by running or probing the system,

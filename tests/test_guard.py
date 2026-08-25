@@ -31,13 +31,19 @@ CONFIG = EngagementConfig(
     engagement_reference=("Project Ridgeline",),
 )
 
+# Items are DESCRIBED, not merely named: an enumerated item shorter than
+# _MIN_ITEM_CHARS is a category label, not a finding (see runI_r1).
+_ITEMS = (
+    "DOE ceiling exhaustion threatens the largest customer relationship.",
+    "Unreconciled EBITDA discrepancy between the CIM and the QofE pack.",
+    "Stale environmental assessment with no vapour intrusion work done.",
+    "Salt Lake City lease assignment consent was never obtained at all.",
+    "NLRB union election petition disclosed only in a buried footnote.",
+)
 FIVE = ("EXECUTIVE SUMMARY\n\nThe most significant concerns are:\n"
-        "1. DOE ceiling exhaustion.\n2. Unreconciled EBITDA discrepancy.\n"
-        "3. Stale environmental assessment.\n4. Lease consent never obtained.\n"
-        "5. NLRB petition disclosed in a footnote.\n\n")
+        + "".join(f"{i}. {t}\n" for i, t in enumerate(_ITEMS, 1)) + "\n")
 THREE = ("EXECUTIVE SUMMARY\n\nThe three most critical issues are:\n"
-         "1. DOE ceiling exhaustion.\n2. Unreconciled EBITDA discrepancy.\n"
-         "3. Stale environmental assessment.\n\n")
+         + "".join(f"{i}. {t}\n" for i, t in enumerate(_ITEMS[:3], 1)) + "\n")
 
 COMPLIANT = "MEMORANDUM\n\n" + FIVE + "1. Permit issue\n" + "detail. " * 200
 SHORT = "MEMORANDUM\n\n" + THREE + "1. Permit issue\n" + "detail. " * 200
@@ -573,8 +579,7 @@ class TestEditTool(unittest.TestCase):
         g, inner = make_guard(c, self.tmp)
         write(g, "memo.md", COMPLIANT)
         self.edit(g, "memo.md",
-                  "4. Lease consent never obtained.\n"
-                  "5. NLRB petition disclosed in a footnote.\n", "")
+                  f"4. {_ITEMS[3]}\n5. {_ITEMS[4]}\n", "")
         out = bash(g, "pandoc memo.md -o output/red-flag-memo.docx")
         self.assertIn("executive summary is 3", c.actions[0])
         self.assertIn("executive summary", out.lower())

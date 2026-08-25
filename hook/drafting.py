@@ -132,6 +132,14 @@ _ENUMERATED_ITEM = re.compile(r"^[ \t]*(?:[-*\u2022]|\(?\d+[.)])[ \t]+\S", re.M)
 # it may not be is unverifiable.
 _MIN_EXEC_SUMMARY_FINDINGS = 5
 
+# Minimum characters of description before an enumerated item counts as a
+# finding rather than a category label. Chosen from the gap measured in
+# runI_r1: categories 26-43 chars, findings 71-79. Any value from 40
+# to 120 measures identically on the 26 scored memos; 50 sits in the
+# middle of the real gap rather than on its edge.
+_MIN_ITEM_CHARS = 50
+_ITEM_PAYLOAD = re.compile(r"^[ \t]*(\(?\d+[.)]|[-*\u2022])\s*")
+
 # The next section heading after the executive summary.
 _SECTION_BOUNDARY = re.compile(
     r"^[ \t]*(?:"
@@ -328,41 +336,52 @@ def exec_summary_findings(text: str) -> int:
     # A numbered list runs 1,2,3,... A section that restarts at 1 is a new
     # list, not a continuation: without this, the executive summary's three
     # items ran straight into the next section's "1." and counted four.
+    # An item is its marker line PLUS any indented continuation lines.
+    # Measuring only the marker line made the length test depend on how
+    # the parser wrapped the text -- the same parser-dependence fixed
+    # earlier for contiguity. Coalesce first, then judge.
+    items: list[tuple[int | None, str] | None] = []
+    for line in body.splitlines():
+        if _ENUMERATED_ITEM.match(line):
+            num = re.match(r"^[ \t]*\(?(\d+)[.)]", line)
+            items.append((int(num.group(1)) if num else None,
+                          _ITEM_PAYLOAD.sub("", line).strip()))
+        elif line.strip():
+            if items and items[-1] is not None and line[:1] in " \t":
+                n, text = items[-1]
+                items[-1] = (n, f"{text} {line.strip()}")
+            else:
+                items.append(None)   # prose at the margin ends the list
+
     best = run = 0
     prev_num = None
-    for line in body.splitlines():
-        m = _ENUMERATED_ITEM.match(line)
-        if m:
-            num = re.match(r"^[ \t]*\(?(\d+)[.)]", line)
-            if num:
-                n = int(num.group(1))
-                run = run + 1 if (prev_num is not None and n == prev_num + 1) else 1
-                prev_num = n
-            else:
-                # Bullets do NOT count. runI_r1's summary bulleted seven
-                # risk CATEGORIES ("Revenue & Customer Concentration
-                # (3 flags)") and numbered only three actual findings.
-                # The guard passed it; LAB's judge failed C-036 on it,
-                # saying the summary "only calls out 3". A category names
-                # a group, not a finding, and counting bullets made the
-                # rule stop implying the criterion. Across all 25 scored
-                # memos, counting bullets gives one guard-pass the judge
-                # fails; numbered-only gives none.
-                run, prev_num = 0, None
-                continue
-            best = max(best, run)
-        elif line.strip():
-            # An INDENTED line inside a list is the current item wrapping,
-            # not prose ending the list. LAB parses .docx with
-            # `pandoc -t markdown --wrap=none`, which puts each item on one
-            # line, so enforcement never hit this -- but that made the
-            # count a property of LAB's pandoc flags rather than of the
-            # document. Without --wrap=none the same conforming memo
-            # counts 3 instead of 5, which would block work that meets the
-            # standard.
-            if run and line[:1] in " \t":
-                continue
-            run, prev_num = 0, None   # prose at margin ends the list
+    for item in items:
+        if item is None:
+            run, prev_num = 0, None
+            continue
+        n, text = item
+        if len(text) < _MIN_ITEM_CHARS:
+            # A finding must be DESCRIBED, not merely named. runI_r1's
+            # summary bulleted seven risk CATEGORIES -- "Revenue &
+            # Customer Concentration (3 flags)" -- and LAB's judge failed
+            # C-036 on it, saying the summary "only calls out 3". The
+            # guard had counted seven and passed it: the rule stopped
+            # implying the criterion it exists to imply.
+            #
+            # Marker shape does not separate the two. runI_r4 lists five
+            # genuine findings as dash bullets and LAB's judge passes it,
+            # so counting only numbered items blocks real work. Length
+            # does separate them: in runI_r1 the categories run 26-43
+            # characters and the findings 71-79.
+            run, prev_num = 0, None
+            continue
+        if n is not None:
+            run = run + 1 if (prev_num is not None and n == prev_num + 1) else 1
+            prev_num = n
+        else:                        # bullets: contiguity is enough
+            run += 1
+            prev_num = None
+        best = max(best, run)
     return best
 
 

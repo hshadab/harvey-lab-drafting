@@ -79,20 +79,20 @@ one naming five concrete items (`runA_r8`). Trying to reproduce a fuzzy
 grader is how an earlier attempt at C-039 went wrong.
 
 So the rule is deliberately **stricter and mechanical**: the executive
-summary must contain a *numbered list* of at least five findings.
+summary must **enumerate and describe** at least five findings.
 
-Measured across all 25 scored memos:
+Measured across all 26 scored memos:
 
 | | judge passes C-036 | judge fails C-036 |
 |---|---|---|
-| **guard passes** (5+ numbered) | 6 | **0** |
-| **guard blocks** (fewer) | 9 | 10 |
+| **guard passes** (5+ described) | 9 | **0** |
+| **guard blocks** (fewer) | 7 | 10 |
 
 The top-right cell is the one that matters. A memo the guard passes and
 the judge fails means the mechanical rule does not imply the criterion,
 and the whole design rests on it doing so. It is zero.
 
-The bottom-left cell — nine memos the judge accepted and this rule would
+The bottom-left cell — seven memos the judge accepted and this rule would
 block — is **by design, not error**. The judge accepts a prose summary;
 a house style need not. What a house style may not do is pass work the
 rubric fails.
@@ -111,9 +111,13 @@ Concentration (3 flags)" — and numbered three actual findings. The guard
 counted seven and passed it. LAB's judge failed C-036: *"the executive
 summary only calls out 3 as 'CRITICAL SEVERITY FLAGS'."*
 
-A category names a group; it is not a finding. Bullets no longer count —
-only consecutively numbered items do. That is the difference between the
-6/0 table above and a table with a memo in the top-right cell.
+A category names a group; it is not a finding. Keying on the marker was
+the wrong fix — `runI_r4` lists five genuine findings as dash bullets and
+passes C-036, so counting only numbered items blocks real work. What
+separates them is whether the item is *described*: categories run 26–43
+characters, findings 71–79. An item now counts with at least 50
+characters of description, measured across continuation lines so the
+count does not depend on the parser's wrapping.
 
 This is the failure mode the design is supposed to prevent, found in the
 rule itself rather than in the plumbing: not a crash, not an escape, but

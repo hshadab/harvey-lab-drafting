@@ -43,6 +43,19 @@ CLEARED = (
     "the range disclosed.\n")
 
 
+def described(n=5, start=1):
+    """n enumerated items that DESCRIBE a finding rather than name it.
+
+    Placeholder items ("1. a") are shorter than _MIN_ITEM_CHARS and are
+    read as category labels, so a fixture testing something else -- a
+    heading shape, a boundary -- must still write real items.
+    """
+    return "".join(
+        f"{i}. Finding {i} concerning a specific diligence issue that is "
+        f"described at some length here.\n"
+        for i in range(start, start + n))
+
+
 class TestSplitting(unittest.TestCase):
     def test_numbered_and_tagged_headings_both_split(self):
         self.assertEqual(len(split_red_flags(FLAGS)), 2)
@@ -96,9 +109,7 @@ class TestExecSummary(unittest.TestCase):
         """runA listed exactly three and LAB failed it on C-036."""
         head = GOOD_HEAD.split("EXECUTIVE SUMMARY")[0] + (
             "EXECUTIVE SUMMARY\n\nThe three most critical issues are:\n"
-            "1. DOE ceiling exhaustion.\n"
-            "2. Unreconciled EBITDA discrepancy.\n"
-            "3. Stale environmental assessment.\n\n")
+            + described(3) + "\n")
         f = check_draft(head + FLAGS + CLEARED, CONFIG, DOCS)
         self.assertEqual(f.exec_summary_findings, 3)
         self.assertFalse(f.compliant())
@@ -260,19 +271,21 @@ class TestWrappedListItems(unittest.TestCase):
         produce this routinely. Missing it counted 0 findings and blocked
         a conforming memo."""
         text = ("MEMORANDUM\n\n**Executive Summary**\n\n"
-                "1. a\n2. b\n3. c\n4. d\n5. e\n\nDetailed Findings\n")
+                + described() + "\nDetailed Findings\n")
         self.assertEqual(exec_summary_findings(text), 5)
 
     def test_underscore_and_numbered_bold_headings(self):
         for heading in ("__EXECUTIVE SUMMARY__", "**II. Executive Summary**",
                         "## **Executive Summary**", "## Executive Summary:"):
             text = (f"MEMORANDUM\n\n{heading}\n\n"
-                    "1. a\n2. b\n3. c\n4. d\n5. e\n\nDetailed Findings\n")
+                    + described() + "\nDetailed Findings\n")
             self.assertEqual(exec_summary_findings(text), 5, heading)
 
     def test_parenthesised_numbers_count(self):
-        text = ("EXECUTIVE SUMMARY\n\n(1) a\n(2) b\n(3) c\n(4) d\n(5) e\n\n"
-                "DETAILED FINDINGS\n")
+        text = ("EXECUTIVE SUMMARY\n\n"
+                + described().replace(". Finding", ") Finding")
+                             .replace("\n1)", "\n(1)")
+                + "\nDETAILED FINDINGS\n")
         self.assertEqual(exec_summary_findings(text), 5)
 
     def test_no_executive_summary_counts_zero(self):
@@ -283,7 +296,7 @@ class TestWrappedListItems(unittest.TestCase):
         """A bold line inside the summary is a sub-label, not a section
         boundary; the list after it must still count."""
         text = ("## Executive Summary\n\n**Top Five Findings**\n\n"
-                "1. a\n2. b\n3. c\n4. d\n5. e\n\n## Detailed Findings\n")
+                + described() + "\n## Detailed Findings\n")
         self.assertEqual(exec_summary_findings(text), 5)
 
     def test_wrapped_prose_paragraph_is_not_a_finding(self):
@@ -326,6 +339,27 @@ CRITICAL SEVERITY FLAGS (3):
 # CRITICAL ISSUES REQUIRING IMMEDIATE ATTENTION
 """
 
+    # Five genuine findings, written as DASH BULLETS rather than numbers.
+    # LAB's judge passed C-036 on this memo. An earlier fix counted only
+    # numbered items and would have blocked it -- overcorrecting from
+    # runI_r1 by keying on marker shape instead of on substance.
+    RUNI_R4 = """# EXECUTIVE SUMMARY
+
+PRINCIPAL FINDINGS:
+
+- Finding 1 - Revenue Concentration & Ceiling Exhaustion Risk: The DOE IDIQ contract has only $12.3M remaining ceiling capacity, exhausted by May 2025.
+
+- Finding 2 - Mandatory Debt Prepayment on Change of Control: The $38.7M facility requires ~$39.2M cash outflow at closing plus a 1.0% premium.
+
+- Finding 3 - Environmental Liability at Owned Facility: Grand Junction has documented soil and groundwater contamination; remediation $1.8M-$2.6M.
+
+- Finding 4 - Unresolved Regulatory Enforcement Action: CDPHE Notice of Violation alleges improper hazardous waste storage; exposure to $1.16M.
+
+- Finding 5 - Critical Lease Assignment & Permit Transfer Delays: Salt Lake City lease generating $16.2M annual revenue needs landlord consent.
+
+# CRITICAL ISSUES
+"""
+
     def test_seven_categories_and_three_findings_counts_three(self):
         self.assertEqual(exec_summary_findings(self.RUNI_R1), 3,
                          "categories must not be counted as findings")
@@ -333,14 +367,22 @@ CRITICAL SEVERITY FLAGS (3):
     def test_that_memo_would_now_be_blocked(self):
         self.assertLess(exec_summary_findings(self.RUNI_R1), 5)
 
+    def test_bulleted_findings_with_substance_still_pass(self):
+        """LAB's judge passed runI_r4. Blocking it would be a false block."""
+        self.assertEqual(exec_summary_findings(self.RUNI_R4), 5,
+                         "a described finding counts whether it is "
+                         "numbered or bulleted")
+
     def test_numbered_findings_still_count(self):
-        text = ("# Executive Summary\n\n"
-                "1. First finding.\n2. Second finding.\n3. Third finding.\n"
-                "4. Fourth finding.\n5. Fifth finding.\n\n# Detail\n")
+        text = ("# Executive Summary\n\n" + "".join(
+            f"{i}. Finding {i} - a specific issue described at enough "
+            f"length to be an actual finding rather than a label.\n"
+            for i in range(1, 6)) + "\n# Detail\n")
         self.assertEqual(exec_summary_findings(text), 5)
 
-    def test_bullets_alone_never_satisfy_the_standard(self):
+    def test_bare_category_labels_never_satisfy_the_standard(self):
         text = ("# Executive Summary\n\n"
-                + "".join(f"• Category {i}\n" for i in range(1, 9))
+                + "".join(f"• Category {i} (3 flags)\n" for i in range(1, 9))
                 + "\n# Detail\n")
-        self.assertEqual(exec_summary_findings(text), 0)
+        self.assertEqual(exec_summary_findings(text), 0,
+                         "naming a group is not describing a finding")
