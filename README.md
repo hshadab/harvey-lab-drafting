@@ -129,6 +129,44 @@ Recorded before the enforced runs, so it can be scored rather than
 rationalised: **C-036 goes from 11/18 to passing.** If it does not, the
 implication argument above is wrong and this line is the record of it.
 
+## runE_r1 (2026-08-25): C-036 passed — but the gate did not cause it
+
+**40/50, the second-highest score of any run recorded here. C-036 passed,
+as predicted. And the prediction should not be counted as confirmed.**
+
+The three governed checks tell the real story:
+
+| Verdict | File | Findings counted |
+|---|---|---|
+| **SAT** | `red-flag-memo.md` | 5 |
+| UNSAT | `response.md` | 0 |
+| UNSAT | `response.md` | 0 |
+
+**The memo passed on its first attempt.** The agent listed five findings
+unprompted; enforcement had nothing to correct. So C-036 passing here is
+the agent complying on its own, not the gate changing an outcome — this
+run is consistent with the prediction and is not evidence for it.
+
+C-036 passes 61% of the time unenforced. A single enforced run landing in
+that 61% proves nothing. What would prove it is a run where the memo is
+blocked for listing fewer than five and then ships compliant, which
+`runD_r2` demonstrated for a different rule and this run did not get the
+chance to.
+
+**Still one false positive.** `response.md` — the agent's closing summary,
+not a graded deliverable — was classified as a memo draft and refused
+twice. Same root cause as the tracker-script bug one run earlier: the
+classifier catches anything long and prose-shaped that mentions red flags.
+The redirect-target fix excluded code; it does not exclude genuine
+markdown that simply is not the memo. Not score-affecting (the graded
+deliverables are the `.docx` and `.xlsx`), but the guard is still refusing
+work it has no business governing.
+
+**On the 40/50.** The unenforced baseline is 33-41, mean 36.1. 40 sits
+inside that range, near the top. At n=1, with the gate never firing on the
+memo, this says nothing about whether enforcement costs or gains
+anything — and it is not offered as though it does.
+
 ## Layout
 
     policy/controls.md       the single rule (source for makeRules)
