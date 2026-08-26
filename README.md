@@ -210,7 +210,7 @@ scored every memo in the results table. The point is that some criteria
 carry enough liability that a firm wants them computed and enforced, and
 only the rest judged.
 
-This is intentionally called a checkpoint, not a verifier, to avoid
+This is deliberately called a gate rather than a verifier, to avoid
 colliding with LAB's use of that word.
 
 ## What this does not claim
