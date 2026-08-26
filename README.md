@@ -19,7 +19,7 @@ writes it up as a red flag — rates it MEDIUM, recommends a closing
 condition — is a junior lawyer crying wolf to a partner about a matter
 the partner already settled.
 
-**Agents get this wrong in 23 of 28 recorded memos.** Roughly 8 times
+**Agents get this wrong in 27 of 33 recorded memos.** Roughly 8 times
 out of 10.
 
 So this project puts a gate in front of the agent. Every time it tries to

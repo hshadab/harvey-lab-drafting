@@ -35,14 +35,19 @@ re-raise an item the engagement has cleared" is a firm standard; "the
 Wyoming permit is fine" would be an answer key. The underlying fact is
 discoverable in the data room, which is that file's standing test.
 
-Measured across the 28 graded memos:
+Measured across all 33 memos LAB's judge has scored:
 
 | | judge fails C-032 | judge passes C-032 |
 |---|---|---|
-| **guard blocks** | 23 | **0** |
-| **guard permits** | 2 | 3 |
+| **guard blocks** | 27 | **0** |
+| **guard permits** | **0** | 6 |
 
-Zero false blocks. It never refuses a memo the judge accepted.
+Zero false blocks — it never refuses a memo the judge accepted — and
+zero misses. The two misses this check once carried were closed by the
+fail-closed fallback described below; both were memos it could not
+segment.
+
+Reproduce with `scripts/measure.py`.
 
 **One cleared item, not four.** LAB has four distractor criteria
 (C-032..C-035). Only this one is checkable without false positives:
@@ -121,8 +126,8 @@ whole document, minus cleared-items sections, whenever no entries can be
 split out. That fallback also closed the only two misses this check had
 carried; both were unsegmentable for the same reason.
 
-Across 28 graded memos plus the live runs: **27 blocks, zero false
-positives, zero misses.** The shape is a regression fixture in
+Across all 33 scored memos: **27 blocks, zero false positives, zero
+misses.** The shape is a regression fixture in
 `tests/test_drafting.py`; removing the fallback fails the suite.
 
 > **Note on `runs/runM_r1/final_state.json`.** That run executed under
@@ -238,10 +243,11 @@ reverting it fails the suite.
 * The check matches a red flag's whole entry, and the pattern carries
   its own precision. A memo that raises the cleared matter without using
   any of its names — no "Wyoming", no permit number, no "DEQ" — would
-  still not be caught. Two of the 28 graded memos are misses for related
-  reasons.
-* Nine runs is still a small sample, and only four are scored by LAB's
-  judge.
+  still not be caught. No memo in the 33 scored does this, so the risk
+  is unmeasured rather than ruled out.
+* Five recorded runs is a small sample, and only four are scored by
+  LAB's judge. The 33-memo measurement above includes LAB runs recorded
+  before this guard existed.
 * **One rule, out of fifty criteria.** This shows the mechanism works on
   one standard. It does not show it generalises to rules that are harder
   to count.
