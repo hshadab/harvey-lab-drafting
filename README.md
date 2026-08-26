@@ -193,6 +193,26 @@ gating:
 
 A prompt is a request. A check is a gate. And a gate leaves a receipt.
 
+## Relation to the Harvey and LangChain verifier study
+
+The June 2026 LangChain and Harvey study makes LAB's LLM verifiers
+cheaper. A verifier in that sense is a grader: it reads the finished memo
+and labels each rubric criterion pass or fail, after delivery, for evals
+and RL reward. The study reports that frontier judges disagree with one
+another on roughly 4 to 5 percent of labels.
+
+This repo does a different job. It enforces one criterion rather than
+grading fifty, and it runs before the memo leaves the sandbox rather than
+after. The count of cleared matters raised as red flags is computed from
+the `.docx`, a compiled rule decides on that count, and each decision
+carries a receipt. Nothing here replaces the judge; the judge still
+scored every memo in the results table. The point is that some criteria
+carry enough liability that a firm wants them computed and enforced, and
+only the rest judged.
+
+This is intentionally called a checkpoint, not a verifier, to avoid
+colliding with LAB's use of that word.
+
 ## What this does not claim
 
 The claim is **not** "the guard makes the agent write better memos".
