@@ -19,8 +19,8 @@ writes it up as a red flag — rates it MEDIUM, recommends a closing
 condition — is a junior lawyer crying wolf to a partner about a matter
 the partner already settled.
 
-**Agents get this wrong in 27 of 33 recorded memos.** Roughly 8 times
-out of 10.
+**Every one of the 18 memos written without a drafting standard
+enforced gets this wrong. 18 of 18.**
 
 So this project puts a gate in front of the agent. Every time it tries to
 produce the memo, our code reads the finished document and checks whether

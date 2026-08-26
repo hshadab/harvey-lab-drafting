@@ -26,14 +26,31 @@ A requirement ("include five findings") is discharged by one deliberate
 act the agent can watch itself perform, and a firm can close most of
 that gap with a prompt. A prohibition has to hold across every red flag
 the memo raises, it competes directly with the task's own instruction to
-find red flags, and one slip is a failure. **Agents violate C-032 in 23
-of 28 recorded memos — 82%.**
+find red flags, and one slip is a failure. **Every one of the 18 memos
+written with no drafting standard enforced raises the cleared matter:
+18 of 18.**
 
 The rule is generic; the cleared list is matter configuration in
 `policy/engagement.json`, exactly like the client's name. "Do not
 re-raise an item the engagement has cleared" is a firm standard; "the
 Wyoming permit is fine" would be an answer key. The underlying fact is
 discoverable in the data room, which is that file's standing test.
+
+### Two denominators, and what each is for
+
+**18** — memos written with no drafting standard enforced. This is the
+baseline violation rate, and it is 18 of 18. These are LAB runs recorded
+before this guard existed.
+
+**33** — every memo LAB's judge has scored on C-032: those 18 plus the
+15 produced under some version of this guard. This is the denominator
+for checker-vs-judge agreement, where more documents is strictly better
+evidence, and where guarded runs belong precisely because several of
+them were produced by earlier, defective versions of the check.
+
+Quoting the second as a violation rate would be wrong in both
+directions: it would understate the unguarded rate, and it would count
+this project's own runs as if they were evidence about agents.
 
 Measured across all 33 memos LAB's judge has scored:
 
