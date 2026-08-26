@@ -195,11 +195,16 @@ A prompt is a request. A check is a gate. And a gate leaves a receipt.
 
 ## Relation to the Harvey and LangChain verifier study
 
-The June 2026 LangChain and Harvey study makes LAB's LLM verifiers
-cheaper. A verifier in that sense is a grader: it reads the finished memo
-and labels each rubric criterion pass or fail, after delivery, for evals
-and RL reward. The study reports that frontier judges disagree with one
-another on roughly 4 to 5 percent of labels.
+["Designing Efficient Verifiers for Legal Agents with
+Harvey"](https://blog.langchain.com/), LangChain Labs and Harvey,
+2 June 2026, makes LAB's LLM verifiers cheaper: batching the rubric into
+one call and using open models cuts verifier cost by orders of
+magnitude. A verifier in that sense is a grader. It reads the finished
+memo and labels each rubric criterion pass or fail, after delivery, for
+evals and RL reward. The study reports that even Opus 4.7, GPT-5.5 and
+Sonnet 4.6 disagree on roughly 4 to 5 percent of labels, and suggests
+the reason: "some of the datapoints may not be sufficiently specified
+for models to apply them as consistently as experts".
 
 This repo does a different job. It enforces one criterion rather than
 grading fifty, and it runs before the memo leaves the sandbox rather than
@@ -209,6 +214,30 @@ carries a receipt. Nothing here replaces the judge; the judge still
 scored every memo in the results table. The point is that some criteria
 carry enough liability that a firm wants them computed and enforced, and
 only the rest judged.
+
+Two of the study's findings show up directly in this repo.
+
+**Under-specified criteria.** We hit the aggregate observation as a
+single concrete case. LAB's C-043 states its own threshold, "FAIL if
+more than two of these columns are missing". In three scored trackers
+the judge named exactly two missing columns and failed them anyway. On a
+criterion that states a number, a deterministic check is the more
+faithful reading of the text, and the grader is the component that
+drifts.
+
+**False passes are the wrong failure mode.** The study weighs false
+passes more heavily than false fails, because a failed criterion can be
+escalated while a wrongly passed one cannot. The same asymmetry drives
+the design here: a check that cannot parse a document examines the whole
+document rather than approving it, and a revert that cannot be confirmed
+is recorded as a failure rather than a block.
+
+**A caveat this study puts on our own numbers.** Every verdict in the
+results table comes from a single Sonnet 4.6 judge. If frontier models
+disagree on 4 to 5 percent of labels, a second judge would be expected
+to move one or two of the 33 verdicts, which is the resolution the
+agreement measurement actually has. Panels rather than a single grader
+would tighten it.
 
 This is deliberately called a gate rather than a verifier, to avoid
 colliding with LAB's use of that word.

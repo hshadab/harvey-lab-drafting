@@ -265,6 +265,12 @@ reverting it fails the suite.
 * Five recorded runs is a small sample, and only four are scored by
   LAB's judge. The 33-memo measurement above includes LAB runs recorded
   before this guard existed.
+* **Verdicts come from one judge.** Every C-032 verdict in the table is
+  a single Sonnet 4.6 label. The LangChain and Harvey verifier study
+  (2 June 2026) measures frontier models disagreeing on 4 to 5 percent
+  of labels, so a second grader would be expected to move one or two of
+  the 33. The measurement's resolution is bounded by that, not by the
+  guard.
 * **One rule, out of fifty criteria.** This shows the mechanism works on
   one standard. It does not show it generalises to rules that are harder
   to count.
